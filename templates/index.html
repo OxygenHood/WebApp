@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}首页 - 无人集群指控系统{% endblock %}
+
+{% block page_title %}欢迎使用无人集群指控系统{% endblock %}
+
+{% block content %}
+<div class="welcome-container">
+    <div class="welcome-card">
+        <h2>系统概述</h2>
+        <p>
+            欢迎来到无人集群指控系统！这是一个集成化的管理平台，提供全面的场景管理、模型管理和仿真评估功能。
+            通过左侧导航栏，您可以访问各个功能模块：
+        </p>
+        
+        <div class="features">
+            <div class="feature-item">
+                <i class="fas fa-cogs"></i>
+                <h3>场景管理</h3>
+                <p>管理和监控系统管道流程，确保数据流的稳定性和效率。</p>
+            </div>
+            
+            <div class="feature-item">
+                <i class="fas fa-cube"></i>
+                <h3>模型管理</h3>
+                <p>集中管理各类机器学习模型，包括模型训练、部署和版本控制。</p>
+            </div>
+            
+            <div class="feature-item">
+                <i class="fas fa-chart-line"></i>
+                <h3>仿真评估</h3>
+                <p>提供全面的仿真测试和性能评估工具，确保系统的可靠性。</p>
+            </div>
+        </div>
+        
+        <div class="stats">
+            <div class="stat-item">
+                <h4>系统状态</h4>
+                <span class="status-indicator online">在线</span>
+            </div>
+            <div class="stat-item">
+                <h4>活跃用户</h4>
+                <span class="count">1</span>
+            </div>
+            <div class="stat-item">
+                <h4>运行时间</h4>
+                <span class="uptime">正常</span>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 图片展示区域 -->
+    <div class="image-showcase">
+        <!-- 任务分配图片 -->
+        <div class="image-section">
+            <div class="image-container">
+                <img src="{{ url_for('static', filename='img/fig1.png') }}" 
+                     alt="任务分配" 
+                     class="showcase-image">
+            </div>
+            <div class="image-description">
+                <h3><i class="fas fa-route"></i> 任务分配</h3>
+                <p>任务分配对于无人平台执行防空反导任务至关重要。通过精确、高效的任务分配，无人平台可以在复杂、动态的海战场环境中避开威胁，快速、安全地完成侦察、监视、打击等任务，同时提高群体作战的协同效率。</p>
+            </div>
+        </div>
+        
+        <!-- 火力分配图片 -->
+        <div class="image-section reverse">
+            <div class="image-container">
+                <img src="{{ url_for('static', filename='img/fig2.png') }}" 
+                     alt="火力分配" 
+                     class="showcase-image">
+            </div>
+            <div class="image-description">
+                <h3><i class="fas fa-crosshairs"></i> 火力分配</h3>
+                <p>火力分配是海上防空反导作战的关键环节，依托战场态势感知、杀伤网结构和杀伤链流程，对来袭目标进行威胁评估与排序，生成最优打击方案，实现目标拦截的高效性与作战资源的最优利用，提升防区抗毁能力与整体作战效能。</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

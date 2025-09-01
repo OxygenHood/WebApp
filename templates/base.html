@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}无人集群指控系统{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <!-- 侧边导航栏 -->
+        <nav class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h3>平台管理</h3>
+                <button class="toggle-btn" id="toggleBtn">
+                    <i class="fas fa-bars"></i>
+                </button>
+            </div>
+            <ul class="nav-list">
+                <li class="nav-item">
+                    <a href="{{ url_for('index') }}" class="nav-link {% if request.endpoint == 'index' %}active{% endif %}">
+                        <i class="fas fa-home"></i>
+                        <span class="nav-text">首页</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="{{ url_for('pipeline') }}" class="nav-link {% if request.endpoint == 'pipeline' %}active{% endif %}">
+                        <i class="fas fa-cogs"></i>
+                        <span class="nav-text">场景管理</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="{{ url_for('model') }}" class="nav-link {% if request.endpoint == 'model' %}active{% endif %}">
+                        <i class="fas fa-cube"></i>
+                        <span class="nav-text">模型管理</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="{{ url_for('simulation') }}" class="nav-link {% if request.endpoint == 'simulation' %}active{% endif %}">
+                        <i class="fas fa-chart-line"></i>
+                        <span class="nav-text">仿真评估</span>
+                    </a>
+                </li>
+                <!-- 登出按钮 -->
+                <li class="nav-item nav-logout">
+                    <a href="{{ url_for('logout') }}" class="nav-link logout-link" onclick="return confirm('确定要登出吗？')">
+                        <i class="fas fa-sign-out-alt"></i>
+                        <span class="nav-text">登出</span>
+                    </a>
+                </li>
+            </ul>
+            
+            <!-- 用户信息 -->
+            <div class="user-info">
+                <div class="user-avatar">
+                    <i class="fas fa-user-circle"></i>
+                </div>
+                <div class="user-details">
+                    <span class="username">{{ session.username }}</span>
+                    <span class="user-role">管理员</span>
+                </div>
+            </div>
+        </nav>
+
+        <!-- 主内容区域 -->
+        <main class="main-content">
+            <header class="main-header">
+                <h1>{% block page_title %}{% endblock %}</h1>
+                <!-- 用户信息和操作 -->
+                <div class="header-actions">
+                    <span class="welcome-text">欢迎，{{ session.username }}</span>
+                    <a href="{{ url_for('logout') }}" class="logout-btn" onclick="return confirm('确定要登出吗？')">
+                        <i class="fas fa-sign-out-alt"></i>
+                        登出
+                    </a>
+                </div>
+            </header>
+            
+            <!-- Flash消息显示 -->
+            {% with messages = get_flashed_messages(with_categories=true) %}                
+                {% if messages %}
+                    <div class="flash-container">
+                        {% for category, message in messages %}
+                            <div class="flash-message flash-{{ category }}">
+                                <i class="fas fa-{{ 'check-circle' if category == 'success' else 'exclamation-triangle' if category == 'error' else 'info-circle' }}"></i>
+                                {{ message }}
+                                <button class="close-flash" onclick="this.parentElement.remove()">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+            
+            <div class="content">
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>
