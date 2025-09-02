@@ -9,19 +9,124 @@
 <div class="page-container">
     <div class="content-card">
         <h2>创建新场景</h2>
-        <p>在此页面可以创建新的场景配置。</p>
+        <p>请填写以下信息来创建一个新的场景配置。</p>
         
-        <div class="placeholder-content">
-            <i class="fas fa-edit fa-3x"></i>
-            <h3>场景创建功能开发中</h3>
-            <p>创建场景功能正在开发中，敬请期待...</p>
-        </div>
+        <!-- 显示提示消息 -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
         
-        <div class="button-group">
-            <a href="{{ url_for('pipeline') }}" class="btn btn-secondary">
-                <i class="fas fa-arrow-left"></i> 返回场景管理
-            </a>
-        </div>
+        <!-- 创建场景表单 -->
+        <form method="POST" action="{{ url_for('create_scenario') }}" class="scenario-form">
+            <div class="form-group">
+                <label for="name">场景名称 <span class="required">*</span></label>
+                <input type="text" id="name" name="name" required placeholder="请输入场景名称">
+            </div>
+            
+            <div class="form-group">
+                <label for="scenario_type">场景类型 <span class="required">*</span></label>
+                <select id="scenario_type" name="scenario_type" required>
+                    <option value="">请选择场景类型</option>
+                    <option value="training">训练场景</option>
+                    <option value="mission">任务场景</option>
+                    <option value="test">测试场景</option>
+                    <option value="simulation">仿真场景</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="description">场景描述</label>
+                <textarea id="description" name="description" rows="4" placeholder="请输入场景描述（可选）"></textarea>
+            </div>
+            
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save"></i> 创建场景
+                </button>
+                <a href="{{ url_for('pipeline') }}" class="btn btn-secondary">
+                    <i class="fas fa-arrow-left"></i> 返回场景管理
+                </a>
+            </div>
+        </form>
     </div>
 </div>
+
+<style>
+.scenario-form {
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: bold;
+    color: #333;
+}
+
+.required {
+    color: #e74c3c;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 1rem;
+    transition: border-color 0.3s;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.form-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-start;
+    margin-top: 2rem;
+}
+
+.alert {
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+    border: 1px solid transparent;
+    border-radius: 4px;
+}
+
+.alert-success {
+    color: #155724;
+    background-color: #d4edda;
+    border-color: #c3e6cb;
+}
+
+.alert-error {
+    color: #721c24;
+    background-color: #f8d7da;
+    border-color: #f5c6cb;
+}
+
+.alert-info {
+    color: #0c5460;
+    background-color: #d1ecf1;
+    border-color: #bee5eb;
+}
+</style>
 {% endblock %}

@@ -66,7 +66,20 @@ def index():
 @login_required
 def pipeline():
     """场景管理路由"""
-    return render_template('pipeline.html')
+    try:
+        conn = get_db_connection()
+        scenarios = conn.execute(
+            '''SELECT id, name, description, scenario_type, created_by, 
+               datetime(created_at, 'localtime') as created_at, status 
+               FROM scenarios 
+               WHERE status = 'active' 
+               ORDER BY created_at DESC'''
+        ).fetchall()
+        conn.close()
+        return render_template('pipeline.html', scenarios=scenarios)
+    except Exception as e:
+        flash(f'获取场景列表时发生错误：{str(e)}', 'error')
+        return render_template('pipeline.html', scenarios=[])
 
 @app.route('/model')
 @login_required
@@ -81,10 +94,57 @@ def simulation():
     return render_template('simulation.html')
 
 # 在 app.py 中添加以下代码
-@app.route('/create_scenario')
+@app.route('/create_scenario', methods=['GET', 'POST'])
 @login_required
 def create_scenario():
     """创建场景路由"""
+    if request.method == 'POST':
+        # 获取表单数据
+        name = request.form.get('name', '').strip()
+        description = request.form.get('description', '').strip()
+        scenario_type = request.form.get('scenario_type', '').strip()
+        
+        # 验证必填字段
+        if not name:
+            flash('场景名称不能为空！', 'error')
+            return render_template('create_scenario.html')
+        
+        if not scenario_type:
+            flash('请选择场景类型！', 'error')
+            return render_template('create_scenario.html')
+        
+        try:
+            # 连接数据库
+            conn = get_db_connection()
+            
+            # 检查场景名称是否已存在
+            existing_scenario = conn.execute(
+                'SELECT id FROM scenarios WHERE name = ?', (name,)
+            ).fetchone()
+            
+            if existing_scenario:
+                flash('场景名称已存在，请使用其他名称！', 'error')
+                conn.close()
+                return render_template('create_scenario.html')
+            
+            # 插入新场景
+            conn.execute(
+                '''INSERT INTO scenarios (name, description, scenario_type, created_by) 
+                   VALUES (?, ?, ?, ?)''',
+                (name, description, scenario_type, session['username'])
+            )
+            
+            conn.commit()
+            conn.close()
+            
+            flash(f'场景 "{name}" 创建成功！', 'success')
+            return redirect(url_for('pipeline'))
+            
+        except Exception as e:
+            flash(f'创建场景时发生错误：{str(e)}', 'error')
+            return render_template('create_scenario.html')
+    
+    # GET 请求，显示创建表单
     return render_template('create_scenario.html')
 
 

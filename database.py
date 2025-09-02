@@ -15,6 +15,19 @@ CREATE TABLE IF NOT EXISTS users (
 )
 ''')
 
+# 创建场景表
+cursor.execute('''
+CREATE TABLE IF NOT EXISTS scenarios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT,
+    scenario_type TEXT NOT NULL,
+    created_by TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    status TEXT DEFAULT 'active'
+)
+''')
+
 # 插入初始用户 (密码应该哈希存储)
 username = 'admin'
 password = '80308057'
