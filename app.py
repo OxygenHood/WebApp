@@ -1,3 +1,6 @@
+# 修改后的 app.py
+import sqlite3
+import hashlib
 from flask import Flask, render_template, request, redirect, url_for, session, flash
 
 app = Flask(__name__)
@@ -6,9 +9,11 @@ app.secret_key = 'your-secret-key-here-change-in-production'  # 用于会话管�
 # 应用版本信息
 APP_VERSION = 'V 1.0.0'
 
-# 登录凭据
-VALID_USERNAME = 'admin'
-VALID_PASSWORD = '80308057'
+def get_db_connection():
+    """获取数据库连接"""
+    conn = sqlite3.connect('webapp.db')
+    conn.row_factory = sqlite3.Row  # 使行可以通过列名访问
+    return conn
 
 def login_required(f):
     """登录装饰器"""
@@ -26,8 +31,15 @@ def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
+        password_hash = hashlib.sha256(password.encode()).hexdigest()
         
-        if username == VALID_USERNAME and password == VALID_PASSWORD:
+        # 使用数据库验证用户凭据
+        conn = get_db_connection()
+        user = conn.execute('SELECT * FROM users WHERE username = ? AND password_hash = ?', 
+                           (username, password_hash)).fetchone()
+        conn.close()
+        
+        if user:
             session['logged_in'] = True
             session['username'] = username
             flash('登录成功！', 'success')
