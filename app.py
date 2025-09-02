@@ -80,5 +80,13 @@ def simulation():
     """仿真评估路由"""
     return render_template('simulation.html')
 
+# 在 app.py 中添加以下代码
+@app.route('/create_scenario')
+@login_required
+def create_scenario():
+    """创建场景路由"""
+    return render_template('create_scenario.html')
+
+
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=8888)

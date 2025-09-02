@@ -1,0 +1,27 @@
+<!-- templates/create_scenario.html -->
+{% extends "base.html" %}
+
+{% block title %}创建场景 - 无人集群指控系统{% endblock %}
+
+{% block page_title %}创建场景{% endblock %}
+
+{% block content %}
+<div class="page-container">
+    <div class="content-card">
+        <h2>创建新场景</h2>
+        <p>在此页面可以创建新的场景配置。</p>
+        
+        <div class="placeholder-content">
+            <i class="fas fa-edit fa-3x"></i>
+            <h3>场景创建功能开发中</h3>
+            <p>创建场景功能正在开发中，敬请期待...</p>
+        </div>
+        
+        <div class="button-group">
+            <a href="{{ url_for('pipeline') }}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> 返回场景管理
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
