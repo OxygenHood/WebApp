@@ -52,8 +52,10 @@
                                     <small>创建时间：{{ scenario.created_at }}</small>
                                 </div>
                                 <div class="scenario-actions">
-                                    <button class="btn btn-sm btn-outline">编辑</button>
-                                    <button class="btn btn-sm btn-danger">删除</button>
+                                    <a href="{{ url_for('edit_scenario', scenario_id=scenario.id) }}" class="btn btn-sm btn-outline">编辑</a>
+                                    <button class="btn btn-sm btn-danger delete-btn" 
+                                            data-scenario-id="{{ scenario.id }}" 
+                                            data-scenario-name="{{ scenario.name }}">删除</button>
                                 </div>
                             </div>
                         </div>
@@ -239,4 +241,39 @@
     border-color: #bee5eb;
 }
 </style>
+
+<script>
+// 为所有删除按钮添加事件监听器
+document.addEventListener('DOMContentLoaded', function() {
+    const deleteButtons = document.querySelectorAll('.delete-btn');
+    
+    deleteButtons.forEach(function(button) {
+        button.addEventListener('click', function() {
+            const scenarioId = this.getAttribute('data-scenario-id');
+            const scenarioName = this.getAttribute('data-scenario-name');
+            confirmDelete(scenarioId, scenarioName);
+        });
+    });
+});
+
+function confirmDelete(scenarioId, scenarioName) {
+    if (confirm(`确定要删除场景 "${scenarioName}" 吗？\n\n此操作无法撤销！`)) {
+        // 创建一个隐藏的表单来发送删除请求
+        var form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `/delete_scenario/${scenarioId}`;
+        form.style.display = 'none';
+        
+        // 添加 CSRF token 如果需要的话
+        var csrfInput = document.createElement('input');
+        csrfInput.type = 'hidden';
+        csrfInput.name = '_method';
+        csrfInput.value = 'DELETE';
+        form.appendChild(csrfInput);
+        
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+</script>
 {% endblock %}

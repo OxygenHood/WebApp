@@ -148,5 +148,118 @@ def create_scenario():
     return render_template('create_scenario.html')
 
 
+@app.route('/edit_scenario/<int:scenario_id>', methods=['GET', 'POST'])
+@login_required
+def edit_scenario(scenario_id):
+    """编辑场景路由"""
+    if request.method == 'POST':
+        # 获取表单数据
+        name = request.form.get('name', '').strip()
+        description = request.form.get('description', '').strip()
+        scenario_type = request.form.get('scenario_type', '').strip()
+        
+        # 验证必填字段
+        if not name:
+            flash('场景名称不能为空！', 'error')
+            return redirect(url_for('edit_scenario', scenario_id=scenario_id))
+        
+        if not scenario_type:
+            flash('请选择场景类型！', 'error')
+            return redirect(url_for('edit_scenario', scenario_id=scenario_id))
+        
+        try:
+            # 连接数据库
+            conn = get_db_connection()
+            
+            # 检查场景是否存在
+            existing_scenario = conn.execute(
+                'SELECT * FROM scenarios WHERE id = ?', (scenario_id,)
+            ).fetchone()
+            
+            if not existing_scenario:
+                flash('场景不存在！', 'error')
+                conn.close()
+                return redirect(url_for('pipeline'))
+            
+            # 检查场景名称是否与其他场景冲突（排除当前场景）
+            name_conflict = conn.execute(
+                'SELECT id FROM scenarios WHERE name = ? AND id != ?', (name, scenario_id)
+            ).fetchone()
+            
+            if name_conflict:
+                flash('场景名称已存在，请使用其他名称！', 'error')
+                conn.close()
+                return redirect(url_for('edit_scenario', scenario_id=scenario_id))
+            
+            # 更新场景信息
+            conn.execute(
+                '''UPDATE scenarios 
+                   SET name = ?, description = ?, scenario_type = ? 
+                   WHERE id = ?''',
+                (name, description, scenario_type, scenario_id)
+            )
+            
+            conn.commit()
+            conn.close()
+            
+            flash(f'场景 "{name}" 更新成功！', 'success')
+            return redirect(url_for('pipeline'))
+            
+        except Exception as e:
+            flash(f'更新场景时发生错误：{str(e)}', 'error')
+            return redirect(url_for('edit_scenario', scenario_id=scenario_id))
+    
+    # GET 请求，显示编辑表单
+    try:
+        conn = get_db_connection()
+        scenario = conn.execute(
+            'SELECT * FROM scenarios WHERE id = ?', (scenario_id,)
+        ).fetchone()
+        conn.close()
+        
+        if not scenario:
+            flash('场景不存在！', 'error')
+            return redirect(url_for('pipeline'))
+        
+        return render_template('edit_scenario.html', scenario=scenario)
+    except Exception as e:
+        flash(f'获取场景信息时发生错误：{str(e)}', 'error')
+        return redirect(url_for('pipeline'))
+
+
+@app.route('/delete_scenario/<int:scenario_id>', methods=['POST'])
+@login_required
+def delete_scenario(scenario_id):
+    """删除场景路由"""
+    try:
+        # 连接数据库
+        conn = get_db_connection()
+        
+        # 检查场景是否存在
+        scenario = conn.execute(
+            'SELECT name FROM scenarios WHERE id = ?', (scenario_id,)
+        ).fetchone()
+        
+        if not scenario:
+            flash('场景不存在！', 'error')
+            conn.close()
+            return redirect(url_for('pipeline'))
+        
+        # 软删除场景（将状态设为 deleted）
+        conn.execute(
+            'UPDATE scenarios SET status = "deleted" WHERE id = ?', (scenario_id,)
+        )
+        
+        conn.commit()
+        conn.close()
+        
+        flash(f'场景 "{scenario["name"]}" 删除成功！', 'success')
+        
+    except Exception as e:
+        flash(f'删除场景时发生错误：{str(e)}', 'error')
+    
+    return redirect(url_for('pipeline'))
+
+
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=8888)
