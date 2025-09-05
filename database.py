@@ -21,10 +21,24 @@ CREATE TABLE IF NOT EXISTS scenarios (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     description TEXT,
-    scenario_type TEXT NOT NULL,
     created_by TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    status TEXT DEFAULT 'active'
+    status TEXT DEFAULT 'active',
+    -- 我方无人机配置
+    our_drone_count INTEGER DEFAULT 0,
+    our_drone_positions TEXT,  -- JSON格式存储位置信息
+    our_drone_payloads TEXT,   -- JSON格式存储载荷配置
+    -- 敌方单位配置
+    enemy_reconnaissance_drones INTEGER DEFAULT 0,
+    enemy_reconnaissance_positions TEXT,
+    enemy_attack_helicopters INTEGER DEFAULT 0,
+    enemy_helicopter_positions TEXT,
+    enemy_tanks INTEGER DEFAULT 0,
+    enemy_tank_positions TEXT,
+    enemy_armored_vehicles INTEGER DEFAULT 0,
+    enemy_vehicle_positions TEXT,
+    enemy_military_bases INTEGER DEFAULT 0,
+    enemy_base_positions TEXT
 )
 ''')
 

@@ -37,14 +37,28 @@
                         <div class="scenario-card">
                             <div class="scenario-header">
                                 <h4>{{ scenario.name }}</h4>
-                                <span class="scenario-type scenario-type-{{ scenario.scenario_type }}">
-                                    {{ scenario.scenario_type }}
+                                <span class="scenario-status">
+                                    活跃
                                 </span>
                             </div>
                             
                             {% if scenario.description %}
                                 <p class="scenario-description">{{ scenario.description }}</p>
                             {% endif %}
+                            
+                            <!-- 配置概览 -->
+                            <div class="scenario-config">
+                                <div class="config-item">
+                                    <span class="config-label">我方无人机：</span>
+                                    <span class="config-value">{{ scenario.our_drone_count or 0 }}架</span>
+                                </div>
+                                <div class="config-item">
+                                    <span class="config-label">敌方单位：</span>
+                                    <span class="config-value">
+                                        {{ (scenario.enemy_reconnaissance_drones or 0) + (scenario.enemy_attack_helicopters or 0) + (scenario.enemy_tanks or 0) + (scenario.enemy_armored_vehicles or 0) + (scenario.enemy_military_bases or 0) }}个
+                                    </span>
+                                </div>
+                            </div>
                             
                             <div class="scenario-meta">
                                 <div class="scenario-info">
@@ -126,6 +140,43 @@
     font-size: 0.8rem;
     font-weight: bold;
     text-transform: uppercase;
+}
+
+.scenario-status {
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: bold;
+    background-color: #e8f5e8;
+    color: #388e3c;
+}
+
+.scenario-config {
+    margin: 1rem 0;
+    padding: 1rem;
+    background-color: #f8f9fa;
+    border-radius: 6px;
+    border-left: 4px solid #007bff;
+}
+
+.config-item {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+}
+
+.config-item:last-child {
+    margin-bottom: 0;
+}
+
+.config-label {
+    font-weight: bold;
+    color: #495057;
+}
+
+.config-value {
+    color: #007bff;
+    font-weight: bold;
 }
 
 .scenario-type-training {

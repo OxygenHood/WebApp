@@ -1,6 +1,7 @@
 # 修改后的 app.py
 import sqlite3
 import hashlib
+import json
 from flask import Flask, render_template, request, redirect, url_for, session, flash
 
 app = Flask(__name__)
@@ -8,6 +9,17 @@ app.secret_key = 'your-secret-key-here-change-in-production'  # 用于会话管�
 
 # 应用版本信息
 APP_VERSION = 'V 1.0.0'
+
+# 添加自定义 Jinja2 过滤器
+@app.template_filter('from_json')
+def from_json_filter(value):
+    """从 JSON 字符串解析为 Python 对象"""
+    if value:
+        try:
+            return json.loads(value)
+        except:
+            return {}
+    return {}
 
 def get_db_connection():
     """获取数据库连接"""
@@ -60,7 +72,35 @@ def logout():
 @login_required
 def index():
     """首页路由"""
-    return render_template('index.html')
+    try:
+        conn = get_db_connection()
+        
+        # 查询场景总数
+        scenario_count_result = conn.execute(
+            'SELECT COUNT(*) as count FROM scenarios WHERE status = "active"'
+        ).fetchone()
+        scenario_count = scenario_count_result['count'] if scenario_count_result else 0
+        
+        # 查询模型总数（先检查模型表是否存在）
+        try:
+            model_count_result = conn.execute(
+                'SELECT COUNT(*) as count FROM models'
+            ).fetchone()
+            model_count = model_count_result['count'] if model_count_result else 0
+        except:
+            # 如果模型表不存在，返回0
+            model_count = 0
+        
+        conn.close()
+        
+        return render_template('index.html', 
+                               scenario_count=scenario_count, 
+                               model_count=model_count)
+    except Exception as e:
+        # 如果数据库查询失败，返回默认值
+        return render_template('index.html', 
+                               scenario_count=0, 
+                               model_count=0)
 
 @app.route('/pipeline')
 @login_required
@@ -69,8 +109,10 @@ def pipeline():
     try:
         conn = get_db_connection()
         scenarios = conn.execute(
-            '''SELECT id, name, description, scenario_type, created_by, 
-               datetime(created_at, 'localtime') as created_at, status 
+            '''SELECT id, name, description, created_by, 
+               datetime(created_at, 'localtime') as created_at, status,
+               our_drone_count, enemy_reconnaissance_drones, enemy_attack_helicopters,
+               enemy_tanks, enemy_armored_vehicles, enemy_military_bases
                FROM scenarios 
                WHERE status = 'active' 
                ORDER BY created_at DESC'''
@@ -102,18 +144,74 @@ def create_scenario():
         # 获取表单数据
         name = request.form.get('name', '').strip()
         description = request.form.get('description', '').strip()
-        scenario_type = request.form.get('scenario_type', '').strip()
+        
+        # 获取JSON数据
+        our_drones_data = request.form.get('our_drones_data', '[]')
+        enemy_units_data = request.form.get('enemy_units_data', '[]')
         
         # 验证必填字段
         if not name:
             flash('场景名称不能为空！', 'error')
             return render_template('create_scenario.html')
         
-        if not scenario_type:
-            flash('请选择场景类型！', 'error')
-            return render_template('create_scenario.html')
-        
         try:
+            # 解析JSON数据
+            our_drones = json.loads(our_drones_data)
+            enemy_units = json.loads(enemy_units_data)
+            
+            if len(our_drones) == 0:
+                flash('请至少添加一架我方无人机！', 'error')
+                return render_template('create_scenario.html')
+            
+            # 处理我方无人机数据
+            our_drone_count = len(our_drones)
+            our_drone_positions = []
+            
+            # 为每架无人机生成完整的配置信息
+            drone_details = []
+            for drone in our_drones:
+                drone_info = {
+                    'code': drone['code'],
+                    'lat': drone['lat'],
+                    'lng': drone['lng'],
+                    'altitude': drone['altitude'],
+                    'radar': drone.get('radar', 0),
+                    'hq9b': drone.get('hq9b', 0)
+                }
+                drone_details.append(drone_info)
+                our_drone_positions.append(f"{drone['lat']},{drone['lng']},{drone['altitude']}")
+            
+            our_drone_positions_str = "\n".join(our_drone_positions)
+            
+            # 统计总载荷数量（用于兼容性）
+            total_radar = sum(drone.get('radar', 0) for drone in our_drones)
+            total_hq9b = sum(drone.get('hq9b', 0) for drone in our_drones)
+            
+            # 保存详细配置，包含每架无人机的具体载荷
+            our_drone_payloads = json.dumps({
+                'total_radar': total_radar,
+                'total_hq9b': total_hq9b,
+                'drones': drone_details  # 每架无人机的详细配置
+            })
+            
+            # 处理敌方单位数据
+            enemy_data = {
+                'reconnaissance_drone': {'count': 0, 'positions': []},
+                'attack_helicopter': {'count': 0, 'positions': []},
+                'tank': {'count': 0, 'positions': []},
+                'armored_vehicle': {'count': 0, 'positions': []},
+                'military_base': {'count': 0, 'positions': []}
+            }
+            
+            for unit in enemy_units:
+                unit_type = unit['type']
+                if unit_type in enemy_data:
+                    enemy_data[unit_type]['count'] += 1
+                    if unit.get('altitude', 0) > 0:
+                        enemy_data[unit_type]['positions'].append(f"{unit['lat']},{unit['lng']},{unit['altitude']}")
+                    else:
+                        enemy_data[unit_type]['positions'].append(f"{unit['lat']},{unit['lng']}")
+            
             # 连接数据库
             conn = get_db_connection()
             
@@ -129,9 +227,20 @@ def create_scenario():
             
             # 插入新场景
             conn.execute(
-                '''INSERT INTO scenarios (name, description, scenario_type, created_by) 
-                   VALUES (?, ?, ?, ?)''',
-                (name, description, scenario_type, session['username'])
+                '''INSERT INTO scenarios (
+                    name, description, scenario_type, created_by, our_drone_count, our_drone_positions, our_drone_payloads,
+                    enemy_reconnaissance_drones, enemy_reconnaissance_positions,
+                    enemy_attack_helicopters, enemy_helicopter_positions,
+                    enemy_tanks, enemy_tank_positions,
+                    enemy_armored_vehicles, enemy_vehicle_positions,
+                    enemy_military_bases, enemy_base_positions
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                (name, description, 'custom', session['username'], our_drone_count, our_drone_positions_str, our_drone_payloads,
+                 enemy_data['reconnaissance_drone']['count'], "\n".join(enemy_data['reconnaissance_drone']['positions']),
+                 enemy_data['attack_helicopter']['count'], "\n".join(enemy_data['attack_helicopter']['positions']),
+                 enemy_data['tank']['count'], "\n".join(enemy_data['tank']['positions']),
+                 enemy_data['armored_vehicle']['count'], "\n".join(enemy_data['armored_vehicle']['positions']),
+                 enemy_data['military_base']['count'], "\n".join(enemy_data['military_base']['positions']))
             )
             
             conn.commit()
@@ -140,6 +249,9 @@ def create_scenario():
             flash(f'场景 "{name}" 创建成功！', 'success')
             return redirect(url_for('pipeline'))
             
+        except json.JSONDecodeError:
+            flash('数据格式错误，请重新配置！', 'error')
+            return render_template('create_scenario.html')
         except Exception as e:
             flash(f'创建场景时发生错误：{str(e)}', 'error')
             return render_template('create_scenario.html')
@@ -156,18 +268,75 @@ def edit_scenario(scenario_id):
         # 获取表单数据
         name = request.form.get('name', '').strip()
         description = request.form.get('description', '').strip()
-        scenario_type = request.form.get('scenario_type', '').strip()
+        
+        # 获取JSON数据
+        our_drones_data = request.form.get('our_drones_data', '[]')
+        enemy_units_data = request.form.get('enemy_units_data', '[]')
         
         # 验证必填字段
         if not name:
             flash('场景名称不能为空！', 'error')
             return redirect(url_for('edit_scenario', scenario_id=scenario_id))
         
-        if not scenario_type:
-            flash('请选择场景类型！', 'error')
-            return redirect(url_for('edit_scenario', scenario_id=scenario_id))
-        
         try:
+            # 解析JSON数据
+            our_drones = json.loads(our_drones_data)
+            enemy_units = json.loads(enemy_units_data)
+            
+            if len(our_drones) == 0:
+                flash('请至少添加一架我方无人机！', 'error')
+                return redirect(url_for('edit_scenario', scenario_id=scenario_id))
+            
+            # 处理我方无人机数据
+            our_drone_count = len(our_drones)
+            our_drone_positions = []
+            
+            # 为每架无人机生成完整的配置信息
+            drone_details = []
+            for drone in our_drones:
+                drone_info = {
+                    'id': drone.get('id', 1),
+                    'code': drone['code'],
+                    'lat': drone['lat'],
+                    'lng': drone['lng'],
+                    'altitude': drone['altitude'],
+                    'radar': drone.get('radar', 0),
+                    'hq9b': drone.get('hq9b', 0)
+                }
+                drone_details.append(drone_info)
+                our_drone_positions.append(f"{drone['lat']},{drone['lng']},{drone['altitude']}")
+            
+            our_drone_positions_str = "\n".join(our_drone_positions)
+            
+            # 统计总载荷数量（用于兼容性）
+            total_radar = sum(drone.get('radar', 0) for drone in our_drones)
+            total_hq9b = sum(drone.get('hq9b', 0) for drone in our_drones)
+            
+            # 保存详细配置，包含每架无人机的具体载荷
+            our_drone_payloads = json.dumps({
+                'total_radar': total_radar,
+                'total_hq9b': total_hq9b,
+                'drones': drone_details  # 每架无人机的详细配置
+            })
+            
+            # 处理敌方单位数据
+            enemy_data = {
+                'reconnaissance_drone': {'count': 0, 'positions': []},
+                'attack_helicopter': {'count': 0, 'positions': []},
+                'tank': {'count': 0, 'positions': []},
+                'armored_vehicle': {'count': 0, 'positions': []},
+                'military_base': {'count': 0, 'positions': []}
+            }
+            
+            for unit in enemy_units:
+                unit_type = unit['type']
+                if unit_type in enemy_data:
+                    enemy_data[unit_type]['count'] += 1
+                    if unit.get('altitude', 0) > 0:
+                        enemy_data[unit_type]['positions'].append(f"{unit['lat']},{unit['lng']},{unit['altitude']}")
+                    else:
+                        enemy_data[unit_type]['positions'].append(f"{unit['lat']},{unit['lng']}")
+            
             # 连接数据库
             conn = get_db_connection()
             
@@ -194,9 +363,20 @@ def edit_scenario(scenario_id):
             # 更新场景信息
             conn.execute(
                 '''UPDATE scenarios 
-                   SET name = ?, description = ?, scenario_type = ? 
+                   SET name = ?, description = ?, our_drone_count = ?, our_drone_positions = ?, our_drone_payloads = ?,
+                       enemy_reconnaissance_drones = ?, enemy_reconnaissance_positions = ?,
+                       enemy_attack_helicopters = ?, enemy_helicopter_positions = ?,
+                       enemy_tanks = ?, enemy_tank_positions = ?,
+                       enemy_armored_vehicles = ?, enemy_vehicle_positions = ?,
+                       enemy_military_bases = ?, enemy_base_positions = ?
                    WHERE id = ?''',
-                (name, description, scenario_type, scenario_id)
+                (name, description, our_drone_count, our_drone_positions_str, our_drone_payloads,
+                 enemy_data['reconnaissance_drone']['count'], "\n".join(enemy_data['reconnaissance_drone']['positions']),
+                 enemy_data['attack_helicopter']['count'], "\n".join(enemy_data['attack_helicopter']['positions']),
+                 enemy_data['tank']['count'], "\n".join(enemy_data['tank']['positions']),
+                 enemy_data['armored_vehicle']['count'], "\n".join(enemy_data['armored_vehicle']['positions']),
+                 enemy_data['military_base']['count'], "\n".join(enemy_data['military_base']['positions']),
+                 scenario_id)
             )
             
             conn.commit()
@@ -205,6 +385,9 @@ def edit_scenario(scenario_id):
             flash(f'场景 "{name}" 更新成功！', 'success')
             return redirect(url_for('pipeline'))
             
+        except json.JSONDecodeError:
+            flash('数据格式错误，请重新配置！', 'error')
+            return redirect(url_for('edit_scenario', scenario_id=scenario_id))
         except Exception as e:
             flash(f'更新场景时发生错误：{str(e)}', 'error')
             return redirect(url_for('edit_scenario', scenario_id=scenario_id))

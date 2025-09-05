@@ -23,27 +23,58 @@
         {% endwith %}
         
         <!-- 创建场景表单 -->
-        <form method="POST" action="{{ url_for('create_scenario') }}" class="scenario-form">
+        <form method="POST" action="{{ url_for('create_scenario') }}" class="scenario-form" id="scenarioForm">
             <div class="form-group">
                 <label for="name">场景名称 <span class="required">*</span></label>
                 <input type="text" id="name" name="name" required placeholder="请输入场景名称">
             </div>
             
             <div class="form-group">
-                <label for="scenario_type">场景类型 <span class="required">*</span></label>
-                <select id="scenario_type" name="scenario_type" required>
-                    <option value="">请选择场景类型</option>
-                    <option value="training">训练场景</option>
-                    <option value="mission">任务场景</option>
-                    <option value="test">测试场景</option>
-                    <option value="simulation">仿真场景</option>
-                </select>
-            </div>
-            
-            <div class="form-group">
                 <label for="description">场景描述</label>
                 <textarea id="description" name="description" rows="4" placeholder="请输入场景描述（可选）"></textarea>
             </div>
+            
+            <!-- 我方无人机设置 -->
+            <div class="config-section">
+                <h3>我方作战单位设置</h3>
+                
+                <div class="unit-manager">
+                    <div class="unit-header">
+                        <h4>无人机列表</h4>
+                        <button type="button" class="btn btn-primary btn-sm" onclick="addOurDrone()">+ 添加无人机</button>
+                    </div>
+                    
+                    <div id="ourDronesList" class="units-list">
+                        <!-- 无人机列表将在这里动态生成 -->
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 敌方单位设置 -->
+            <div class="config-section">
+                <h3>敌方单位设置</h3>
+                
+                <div class="unit-manager">
+                    <div class="unit-header">
+                        <h4>敌方单位列表</h4>
+                        <div class="add-enemy-buttons">
+                            <button type="button" class="btn btn-outline btn-sm" onclick="addEnemyUnit('reconnaissance_drone')">+ 侦察无人机</button>
+                            <button type="button" class="btn btn-outline btn-sm" onclick="addEnemyUnit('attack_helicopter')">+ 武装直升机</button>
+                            <button type="button" class="btn btn-outline btn-sm" onclick="addEnemyUnit('tank')">+ 坦克</button>
+                            <button type="button" class="btn btn-outline btn-sm" onclick="addEnemyUnit('armored_vehicle')">+ 装甲车</button>
+                            <button type="button" class="btn btn-outline btn-sm" onclick="addEnemyUnit('military_base')">+ 军事基地</button>
+                        </div>
+                    </div>
+                    
+                    <div id="enemyUnitsList" class="units-list">
+                        <!-- 敌方单位列表将在这里动态生成 -->
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 隐藏的表单字段，用于提交数据 -->
+            <input type="hidden" id="ourDronesData" name="our_drones_data">
+            <input type="hidden" id="enemyUnitsData" name="enemy_units_data">
             
             <div class="form-actions">
                 <button type="submit" class="btn btn-primary">
@@ -54,13 +85,51 @@
                 </a>
             </div>
         </form>
+        
+        <!-- 地图选择模态框 -->
+        <div id="mapModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>选择位置</h3>
+                    <span class="close" onclick="closeMapModal()">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <p class="map-instructions">点击地图选择位置，选中的位置会显示坐标</p>
+                    <div id="map" style="height: 400px; width: 100%; border-radius: 8px;"></div>
+                    <div class="map-info">
+                        <span id="selectedCoords">请点击地图选择位置</span>
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="clearMapSelection()">清除选择</button>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" onclick="confirmMapSelection()">确认选择</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeMapModal()">取消</button>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
 <style>
 .scenario-form {
-    max-width: 600px;
+    max-width: 1000px;
     margin: 0 auto;
+}
+
+.config-section {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin: 2rem 0;
+}
+
+.config-section h3 {
+    margin: 0 0 1.5rem 0;
+    color: #495057;
+    font-size: 1.2rem;
+    border-bottom: 2px solid #007bff;
+    padding-bottom: 0.5rem;
 }
 
 .form-group {
@@ -97,11 +166,267 @@
     box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
 }
 
+/* 地图相关样式 */
+.map-instructions {
+    margin-bottom: 1rem;
+    color: #666;
+    font-style: italic;
+}
+
+.map-info {
+    margin-top: 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem;
+    background: #e9ecef;
+    border-radius: 4px;
+}
+
+/* 模态框样式 */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    overflow: auto;
+}
+
+.modal-content {
+    background-color: white;
+    margin: 5vh auto;
+    border-radius: 8px;
+    width: 80%;
+    max-width: 800px;
+    max-height: 90vh;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    position: relative;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.modal-header {
+    padding: 1.5rem;
+    border-bottom: 1px solid #dee2e6;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #f8f9fa;
+}
+
+.modal-header h3 {
+    margin: 0;
+    color: #495057;
+}
+
+.close {
+    font-size: 2rem;
+    cursor: pointer;
+    color: #999;
+    line-height: 1;
+}
+
+.close:hover {
+    color: #000;
+}
+
+.modal-body {
+    padding: 1.5rem;
+}
+
+.modal-footer {
+    padding: 1rem 1.5rem;
+    border-top: 1px solid #dee2e6;
+    background: #f8f9fa;
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-end;
+}
+
+/* 单位管理器样式 */
+.unit-manager {
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.unit-header {
+    background: #007bff;
+    color: white;
+    padding: 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.unit-header h4 {
+    margin: 0;
+    font-size: 1.1rem;
+}
+
+.add-enemy-buttons {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.units-list {
+    max-height: 400px;
+    overflow-y: auto;
+    background: white;
+}
+
+.unit-item {
+    padding: 1.5rem;
+    border-bottom: 1px solid #dee2e6;
+    background: white;
+}
+
+.unit-item:last-child {
+    border-bottom: none;
+}
+
+.unit-type {
+    font-weight: bold;
+    color: #007bff;
+    margin-bottom: 1rem;
+    font-size: 1.1rem;
+}
+
+.unit-details {
+    flex-grow: 1;
+}
+
+.detail-row {
+    display: grid;
+    grid-template-columns: 1fr 2fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.detail-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.detail-group label {
+    font-weight: bold;
+    color: #495057;
+    font-size: 0.9rem;
+}
+
+.unit-input {
+    padding: 0.5rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
+.position-input {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.position-input input {
+    flex: 1;
+}
+
+.unit-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1rem;
+}
+
+.payload-section {
+    margin-top: 0.5rem;
+    padding: 0.5rem;
+    background: #f8f9fa;
+    border-radius: 4px;
+    border: 1px solid #dee2e6;
+}
+
+.payload-inputs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.payload-inputs input {
+    padding: 0.5rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
 .form-actions {
     display: flex;
     gap: 1rem;
     justify-content: flex-start;
     margin-top: 2rem;
+    padding-top: 2rem;
+    border-top: 1px solid #dee2e6;
+}
+
+.btn {
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 4px;
+    font-size: 1rem;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.3s;
+}
+
+.btn-primary {
+    background: #007bff;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #0056b3;
+}
+
+.btn-secondary {
+    background: #6c757d;
+    color: white;
+}
+
+.btn-secondary:hover {
+    background: #545b62;
+}
+
+.btn-outline {
+    background: transparent;
+    border: 1px solid #007bff;
+    color: #007bff;
+}
+
+.btn-outline:hover {
+    background: #007bff;
+    color: white;
+}
+
+.btn-danger {
+    background: #dc3545;
+    color: white;
+}
+
+.btn-danger:hover {
+    background: #c82333;
+}
+
+.btn-sm {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
 }
 
 .alert {
@@ -128,5 +453,406 @@
     background-color: #d1ecf1;
     border-color: #bee5eb;
 }
+
+@media (max-width: 768px) {
+    .scenario-form {
+        max-width: 100%;
+        padding: 0 1rem;
+    }
+    
+    .config-section {
+        padding: 1rem;
+    }
+    
+    .unit-info {
+        grid-template-columns: 1fr;
+    }
+    
+    .add-enemy-buttons {
+        flex-direction: column;
+    }
+}
 </style>
+
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+<!-- Leaflet JavaScript -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+// 全局变量
+let map;
+let selectedMarker;
+let selectedCoords = null;
+let ourDrones = [];
+let enemyUnits = [];
+let droneCounter = 1;
+let unitCounter = 1;
+let currentInputTarget = null; // 当前正在设置坐标的输入框
+
+// 单位类型映射
+const unitTypeNames = {
+    'reconnaissance_drone': '侦察无人机',
+    'attack_helicopter': '武装直升机',
+    'tank': '坦克',
+    'armored_vehicle': '装甲车',
+    'military_base': '军事基地'
+};
+
+// 初始化地图
+function initMap() {
+    map = L.map('map').setView([39.9042, 116.4074], 3);
+    
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+    
+    map.on('click', function(e) {
+        selectLocation(e.latlng.lat, e.latlng.lng);
+    });
+}
+
+// 地图相关函数
+function selectLocation(lat, lng) {
+    selectedCoords = [lat.toFixed(6), lng.toFixed(6)];
+    
+    if (selectedMarker) {
+        map.removeLayer(selectedMarker);
+    }
+    
+    selectedMarker = L.marker([lat, lng]).addTo(map);
+    document.getElementById('selectedCoords').textContent = `已选择: ${selectedCoords[0]}, ${selectedCoords[1]}`;
+}
+
+function clearMapSelection() {
+    if (selectedMarker) {
+        map.removeLayer(selectedMarker);
+        selectedMarker = null;
+    }
+    selectedCoords = null;
+    document.getElementById('selectedCoords').textContent = '请点击地图选择位置';
+}
+
+function openMapModal(inputTarget) {
+    currentInputTarget = inputTarget;
+    const modal = document.getElementById('mapModal');
+    modal.style.display = 'block';
+    
+    // 防止背景滚动
+    document.body.style.overflow = 'hidden';
+    
+    setTimeout(() => {
+        if (map) {
+            map.invalidateSize();
+        } else {
+            initMap();
+        }
+    }, 100);
+}
+
+function closeMapModal() {
+    const modal = document.getElementById('mapModal');
+    modal.style.display = 'none';
+    
+    // 恢复背景滚动
+    document.body.style.overflow = 'auto';
+    
+    currentInputTarget = null;
+    clearMapSelection();
+}
+
+function confirmMapSelection() {
+    if (selectedCoords && currentInputTarget) {
+        currentInputTarget.value = `${selectedCoords[0]},${selectedCoords[1]}`;
+        
+        // 手动触发onchange事件来更新数据
+        const changeEvent = new Event('change', { bubbles: true });
+        currentInputTarget.dispatchEvent(changeEvent);
+        
+        closeMapModal();
+    } else {
+        alert('请先在地图上选择位置');
+    }
+}
+
+// 添加我方无人机
+function addOurDrone() {
+    const drone = {
+        id: droneCounter++,
+        code: '',
+        lat: '',
+        lng: '',
+        altitude: 100,
+        radar: 0,
+        hq9b: 0
+    };
+    
+    ourDrones.push(drone);
+    updateOurDronesList();
+}
+
+// 更新我方无人机列表
+function updateOurDronesList() {
+    const container = document.getElementById('ourDronesList');
+    
+    if (ourDrones.length === 0) {
+        container.innerHTML = '<div style="padding: 2rem; text-align: center; color: #666;">暂无无人机，请点击上方按钮添加</div>';
+        return;
+    }
+    
+    container.innerHTML = ourDrones.map(drone => `
+        <div class="unit-item">
+            <div class="unit-type">无人机</div>
+            <div class="unit-details">
+                <div class="detail-row">
+                    <div class="detail-group">
+                        <label>编号:</label>
+                        <input type="text" class="unit-input" value="${drone.code}" 
+                               placeholder="请输入编号" onchange="updateDroneField(${drone.id}, 'code', this.value)">
+                    </div>
+                    <div class="detail-group">
+                        <label>位置(经度,纬度):</label>
+                        <div class="position-input">
+                            <input type="text" class="unit-input" id="drone_pos_${drone.id}" value="${drone.lat ? drone.lat + ',' + drone.lng : ''}" 
+                                   placeholder="经度,纬度" onchange="updateDronePosition(${drone.id}, this.value)">
+                            <button type="button" class="btn btn-sm btn-outline" onclick="openMapModal(document.getElementById('drone_pos_${drone.id}'))">地图选择</button>
+                        </div>
+                    </div>
+                    <div class="detail-group">
+                        <label>高度(m):</label>
+                        <input type="number" class="unit-input" value="${drone.altitude}" 
+                               onchange="updateDroneField(${drone.id}, 'altitude', this.value)" min="1" max="10000">
+                    </div>
+                </div>
+                <div class="payload-section">
+                    <strong>载荷配置:</strong>
+                    <div class="payload-inputs">
+                        <div class="detail-group">
+                            <label>雷达数量:</label>
+                            <input type="number" class="unit-input" value="${drone.radar}" min="0" max="10" 
+                                   onchange="updateDroneField(${drone.id}, 'radar', this.value)">
+                        </div>
+                        <div class="detail-group">
+                            <label>HQ9B数量:</label>
+                            <input type="number" class="unit-input" value="${drone.hq9b}" min="0" max="10" 
+                                   onchange="updateDroneField(${drone.id}, 'hq9b', this.value)">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="unit-actions">
+                <button type="button" class="btn btn-sm btn-danger" onclick="removeOurDrone(${drone.id})">删除</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+// 更新无人机字段
+function updateDroneField(droneId, field, value) {
+    const drone = ourDrones.find(d => d.id === droneId);
+    if (drone) {
+        if (field === 'altitude' || field === 'radar' || field === 'hq9b') {
+            drone[field] = parseInt(value) || 0;
+        } else {
+            drone[field] = value;
+        }
+    }
+}
+
+// 更新无人机位置
+function updateDronePosition(droneId, positionStr) {
+    const drone = ourDrones.find(d => d.id === droneId);
+    if (drone && positionStr) {
+        const coords = positionStr.split(',');
+        if (coords.length >= 2) {
+            drone.lat = coords[0].trim();
+            drone.lng = coords[1].trim();
+        }
+    }
+}
+
+// 删除我方无人机
+function removeOurDrone(droneId) {
+    ourDrones = ourDrones.filter(d => d.id !== droneId);
+    updateOurDronesList();
+}
+
+// 添加敌方单位
+function addEnemyUnit(unitType) {
+    const unit = {
+        id: unitCounter++,
+        type: unitType,
+        code: '',
+        lat: '',
+        lng: '',
+        altitude: (unitType === 'reconnaissance_drone' || unitType === 'attack_helicopter') ? 100 : 0
+    };
+    
+    enemyUnits.push(unit);
+    updateEnemyUnitsList();
+}
+
+// 更新敌方单位列表
+function updateEnemyUnitsList() {
+    const container = document.getElementById('enemyUnitsList');
+    
+    if (enemyUnits.length === 0) {
+        container.innerHTML = '<div style="padding: 2rem; text-align: center; color: #666;">暂无敌方单位，请点击上方按钮添加</div>';
+        return;
+    }
+    
+    container.innerHTML = enemyUnits.map(unit => {
+        const showAltitude = unit.type === 'reconnaissance_drone' || unit.type === 'attack_helicopter';
+        return `
+            <div class="unit-item">
+                <div class="unit-type">${unitTypeNames[unit.type]}</div>
+                <div class="unit-details">
+                    <div class="detail-row">
+                        <div class="detail-group">
+                            <label>编号:</label>
+                            <input type="text" class="unit-input" value="${unit.code}" 
+                                   placeholder="请输入编号" onchange="updateEnemyUnitField(${unit.id}, 'code', this.value)">
+                        </div>
+                        <div class="detail-group">
+                            <label>位置(经度,纬度):</label>
+                            <div class="position-input">
+                                <input type="text" class="unit-input" id="enemy_pos_${unit.id}" value="${unit.lat ? unit.lat + ',' + unit.lng : ''}" 
+                                       placeholder="经度,纬度" onchange="updateEnemyUnitPosition(${unit.id}, this.value)">
+                                <button type="button" class="btn btn-sm btn-outline" onclick="openMapModal(document.getElementById('enemy_pos_${unit.id}'))">地图选择</button>
+                            </div>
+                        </div>
+                        ${showAltitude ? `
+                        <div class="detail-group">
+                            <label>高度(m):</label>
+                            <input type="number" class="unit-input" value="${unit.altitude}" 
+                                   onchange="updateEnemyUnitField(${unit.id}, 'altitude', this.value)" min="1" max="10000">
+                        </div>
+                        ` : ''}
+                    </div>
+                </div>
+                <div class="unit-actions">
+                    <button type="button" class="btn btn-sm btn-danger" onclick="removeEnemyUnit(${unit.id})">删除</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// 更新敌方单位字段
+function updateEnemyUnitField(unitId, field, value) {
+    const unit = enemyUnits.find(u => u.id === unitId);
+    if (unit) {
+        if (field === 'altitude') {
+            unit[field] = parseInt(value) || 0;
+        } else {
+            unit[field] = value;
+        }
+    }
+}
+
+// 更新敌方单位位置
+function updateEnemyUnitPosition(unitId, positionStr) {
+    const unit = enemyUnits.find(u => u.id === unitId);
+    if (unit && positionStr) {
+        const coords = positionStr.split(',');
+        if (coords.length >= 2) {
+            unit.lat = coords[0].trim();
+            unit.lng = coords[1].trim();
+        }
+    }
+}
+
+// 删除敌方单位
+function removeEnemyUnit(unitId) {
+    enemyUnits = enemyUnits.filter(u => u.id !== unitId);
+    updateEnemyUnitsList();
+}
+
+// 表单提交时准备数据
+function prepareFormData() {
+    // 调试：显示当前无人机数据
+    console.log('当前无人机数据:', ourDrones);
+    
+    // 验证是否至少有一架无人机
+    if (ourDrones.length === 0) {
+        alert('请至少添加一架我方无人机');
+        return false;
+    }
+    
+    // 验证我方无人机数据
+    for (let i = 0; i < ourDrones.length; i++) {
+        const drone = ourDrones[i];
+        if (!drone.code || !drone.code.trim()) {
+            alert(`请为第${i + 1}架无人机设置编号`);
+            return false;
+        }
+        if (!drone.lat || !drone.lng || !drone.lat.trim() || !drone.lng.trim()) {
+            alert(`请为第${i + 1}架无人机设置位置`);
+            return false;
+        }
+        // 验证坐标格式
+        const lat = parseFloat(drone.lat.trim());
+        const lng = parseFloat(drone.lng.trim());
+        if (isNaN(lat) || isNaN(lng)) {
+            alert(`第${i + 1}架无人机的位置坐标格式不正确`);
+            return false;
+        }
+        if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+            alert(`第${i + 1}架无人机的位置坐标超出有效范围`);
+            return false;
+        }
+    }
+    
+    // 验证敌方单位数据
+    for (let i = 0; i < enemyUnits.length; i++) {
+        const unit = enemyUnits[i];
+        if (!unit.code || !unit.code.trim()) {
+            alert(`请为第${i + 1}个敌方单位设置编号`);
+            return false;
+        }
+        if (!unit.lat || !unit.lng || !unit.lat.trim() || !unit.lng.trim()) {
+            alert(`请为第${i + 1}个敌方单位设置位置`);
+            return false;
+        }
+        // 验证坐标格式
+        const lat = parseFloat(unit.lat.trim());
+        const lng = parseFloat(unit.lng.trim());
+        if (isNaN(lat) || isNaN(lng)) {
+            alert(`第${i + 1}个敌方单位的位置坐标格式不正确`);
+            return false;
+        }
+        if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+            alert(`第${i + 1}个敌方单位的位置坐标超出有效范围`);
+            return false;
+        }
+    }
+    
+    document.getElementById('ourDronesData').value = JSON.stringify(ourDrones);
+    document.getElementById('enemyUnitsData').value = JSON.stringify(enemyUnits);
+    
+    return true;
+}
+
+// 页面加载完成后初始化
+document.addEventListener('DOMContentLoaded', function() {
+    updateOurDronesList();
+    updateEnemyUnitsList();
+    
+    // 表单提交事件
+    document.getElementById('scenarioForm').addEventListener('submit', function(e) {
+        if (!prepareFormData()) {
+            e.preventDefault();
+        }
+    });
+    
+    // 点击模态框外部关闭
+    window.onclick = function(event) {
+        const modal = document.getElementById('mapModal');
+        if (event.target === modal) {
+            closeMapModal();
+        }
+    };
+});
+</script>
 {% endblock %}
