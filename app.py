@@ -196,6 +196,25 @@ def create_scenario():
                 'drones': drone_details  # 每架无人机的详细配置
             })
             
+            # 处理敌方单位数据
+            enemy_data = {
+                'reconnaissance_drone': {'count': 0, 'positions': []},
+                'attack_helicopter': {'count': 0, 'positions': []},
+                'tank': {'count': 0, 'positions': []},
+                'armored_vehicle': {'count': 0, 'positions': []},
+                'military_base': {'count': 0, 'positions': []}
+            }
+            
+            for unit in enemy_units:
+                unit_type = unit['type']
+                if unit_type in enemy_data:
+                    enemy_data[unit_type]['count'] += 1
+                    # 在位置信息中包含编号
+                    if unit.get('altitude', 0) > 0:
+                        enemy_data[unit_type]['positions'].append(f"{unit['lat']},{unit['lng']},{unit['altitude']},{unit.get('code', '')}")
+                    else:
+                        enemy_data[unit_type]['positions'].append(f"{unit['lat']},{unit['lng']},{unit.get('code', '')}")
+            
             # 保存敌方单位的详细数据（包含编号）
             enemy_units_details = json.dumps(enemy_units)
             
