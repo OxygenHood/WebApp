@@ -17,13 +17,31 @@
             <h3><i class="fas fa-cogs"></i> 仿真控制</h3>
         </div>
         <div class="panel-content">
+            <!-- 场景选择区域 -->
+            <div class="control-group scenario-selection">
+                <label>选择场景：</label>
+                <select id="scenarioSelect" class="scenario-select">
+                    <option value="">请选择场景...</option>
+                </select>
+                <button class="btn btn-info btn-sm" id="loadScenario">加载场景</button>
+            </div>
+            
+            <div class="control-group">
+                <label>当前场景：</label>
+                <span id="currentScenario">未选择</span>
+            </div>
+            
             <div class="control-group">
                 <label>仿真状态：</label>
                 <span class="status-badge" id="simStatus">就绪</span>
             </div>
             <div class="control-group">
-                <label>无人机数量：</label>
+                <label>我方无人机：</label>
                 <span id="droneCount">0</span>
+            </div>
+            <div class="control-group">
+                <label>敌方单位：</label>
+                <span id="enemyCount">0</span>
             </div>
             <div class="control-group">
                 <label>作战区域：</label>
@@ -60,12 +78,14 @@
             <div class="info-section">
                 <h4>图例说明：</h4>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 0.8rem;">
-                    <div>🏭 军事基地</div>
-                    <div>⚓ 港口设施</div>
-                    <div>📡 雷达站点</div>
-                    <div>⚔️ 作战区域</div>
+                    <div>✈️ 我方无人机</div>
+                    <div>🔴 敌方单位</div>
+                    <div>🚁 侦察无人机</div>
+                    <div>🚁 武装直升机</div>
+                    <div>💪 坦克</div>
+                    <div>🚗 装甲车</div>
+                    <div>🏢 军事基地</div>
                     <div>🌊 海域</div>
-                    <div>✈️ 无人机</div>
                 </div>
             </div>
         </div>
@@ -86,6 +106,46 @@
     </div>
 </div>
 
+<!-- 添加样式 -->
+<style>
+.scenario-selection {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 15px;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 5px;
+}
+
+.scenario-select {
+    flex: 1;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.btn-info {
+    background-color: #17a2b8;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.btn-info:hover {
+    background-color: #138496;
+}
+
+.btn-sm {
+    padding: 6px 12px;
+    font-size: 12px;
+}
+</style>
+
 <!-- Leaflet.js JavaScript -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
@@ -95,7 +155,43 @@
 // 全局变量
 let map;
 let droneMarkers = [];
+let enemyMarkers = [];
 let isSimulationRunning = false;
+let currentScenarioData = null;
+
+// 日志保存函数
+function saveLog(message, level = 'INFO') {
+    // 在控制台显示日志
+    console.log(message);
+    
+    // 检查消息长度，如果太长则截断
+    let logMessage = message;
+    if (logMessage.length > 2000) {
+        logMessage = logMessage.substring(0, 1997) + '...';
+        console.warn('日志消息过长，已截断至 2000 个字符');
+    }
+    
+    // 发送日志到后端保存
+    fetch('/api/save_log', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            message: logMessage,
+            level: level
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (!data.success) {
+            console.error('保存日志失败:', data.message);
+        }
+    })
+    .catch(error => {
+        console.error('发送日志请求失败:', error);
+    });
+}
 
 // 初始化地图
 function initMap() {
@@ -140,10 +236,7 @@ function initMap() {
         updateMapInfo(center.lat, center.lng, map.getZoom());
     });
     
-    // 添加台湾海峡相关标记
-    addMaritimeMarkers();
-    
-    console.log('台湾海峡地图初始化完成');
+    saveLog('台湾海峡地图初始化完成');
 }
 
 // 更新地图信息显示
@@ -153,116 +246,73 @@ function updateMapInfo(lat, lng, zoom) {
     document.getElementById('zoomLevel').textContent = zoom;
 }
 
-// 添加台湾海峡相关标记
-function addMaritimeMarkers() {
-    // 添加台湾海峡重要地理位置和军事要点
-    const maritimePoints = [
-        // 重要港口和基地
-        { lat: 25.0330, lng: 121.5654, name: '台北港区', type: 'port', description: '重要港口设施' },
-        { lat: 22.6273, lng: 120.3014, name: '高雄港区', type: 'port', description: '南部主要港口' },
-        { lat: 24.1477, lng: 120.6736, name: '台中港区', type: 'port', description: '中部港口设施' },
-        
-        // 战略要点
-        { lat: 24.7736, lng: 120.9436, name: '作战区域A', type: 'combat_zone', description: '北部作战区域' },
-        { lat: 23.8041, lng: 120.4218, name: '作战区域B', type: 'combat_zone', description: '中部作战区域' },
-        { lat: 22.9908, lng: 120.2133, name: '作战区域C', type: 'combat_zone', description: '南部作战区域' },
-        
-        // 关键海域
-        { lat: 25.2954, lng: 119.5269, name: '北部海域', type: 'sea_area', description: '北部警戒海域' },
-        { lat: 24.0000, lng: 119.0000, name: '中央海域', type: 'sea_area', description: '中央作战海域' },
-        { lat: 22.5000, lng: 118.5000, name: '南部海域', type: 'sea_area', description: '南部巡逻海域' },
-        
-        // 雷达站点
-        { lat: 25.1972, lng: 121.6419, name: '雷达站Alpha', type: 'radar', description: '北部预警雷达站' },
-        { lat: 23.5731, lng: 120.8395, name: '雷达站Beta', type: 'radar', description: '中部监控雷达站' },
-        { lat: 22.2370, lng: 120.8397, name: '雷达站Gamma', type: 'radar', description: '南部跟踪雷达站' }
-    ];
-    
-    maritimePoints.forEach(point => {
-        const icon = getMarkerIcon(point.type);
-        const marker = L.marker([point.lat, point.lng], { icon: icon })
-            .addTo(map)
-            .bindPopup(`
-                <div style="min-width: 200px;">
-                    <h4 style="margin: 0 0 8px 0; color: #2c3e50;">${point.name}</h4>
-                    <p style="margin: 0 0 6px 0; color: #7f8c8d; font-size: 0.9rem;">
-                        <strong>类型：</strong>${getTypeDescription(point.type)}
-                    </p>
-                    <p style="margin: 0 0 6px 0; color: #7f8c8d; font-size: 0.9rem;">
-                        <strong>描述：</strong>${point.description}
-                    </p>
-                    <p style="margin: 0; color: #007bff; font-size: 0.8rem; font-family: monospace;">
-                        <strong>坐标：</strong>${point.lat.toFixed(4)}°N, ${point.lng.toFixed(4)}°E
-                    </p>
-                </div>
-            `);
-    });
-    
-    // 添加台湾海峡中心线（参考线）
-    const straitCenterLine = [
-        [25.5, 119.8],
-        [24.5, 120.0],
-        [23.5, 120.2],
-        [22.5, 120.4]
-    ];
-    
-    L.polyline(straitCenterLine, {
-        color: '#dc3545',
-        weight: 2,
-        opacity: 0.6,
-        dashArray: '10, 10'
-    }).addTo(map).bindPopup('台湾海峡中心参考线');
-    
-    // 添加作战边界示例
-    const combatBoundary = [
-        [26.0, 119.0],
-        [26.0, 122.0],
-        [22.0, 122.0],
-        [22.0, 119.0],
-        [26.0, 119.0]
-    ];
-    
-    L.polygon(combatBoundary, {
-        color: '#007bff',
-        weight: 2,
-        opacity: 0.6,
-        fillColor: '#007bff',
-        fillOpacity: 0.1
-    }).addTo(map).bindPopup('作战区域边界');
+// 加载场景列表
+function loadScenarios() {
+    fetch('/api/scenarios')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const select = document.getElementById('scenarioSelect');
+                select.innerHTML = '<option value="">请选择场景...</option>';
+                
+                data.scenarios.forEach(scenario => {
+                    const option = document.createElement('option');
+                    option.value = scenario.id;
+                    option.textContent = `${scenario.name} (我方:${scenario.our_drone_count} 敌方:${scenario.enemy_total})`;
+                    select.appendChild(option);
+                });
+                
+                saveLog(`加载了 ${data.scenarios.length} 个场景到选择列表`);
+            } else {
+                saveLog('加载场景列表失败: ' + data.message, 'ERROR');
+            }
+        })
+        .catch(error => {
+            saveLog('获取场景列表时发生错误: ' + error.message, 'ERROR');
+        });
 }
 
-// 获取不同类型的标记图标
-function getMarkerIcon(type) {
+// 清除地图上的所有标记
+function clearMapMarkers() {
+    // 清除我方无人机标记
+    droneMarkers.forEach(marker => {
+        map.removeLayer(marker);
+    });
+    droneMarkers = [];
+    
+    // 清除敌方单位标记
+    enemyMarkers.forEach(marker => {
+        map.removeLayer(marker);
+    });
+    enemyMarkers = [];
+    
+    saveLog('清除地图上的所有标记');
+}
+
+// 获取标记图标
+function getMarkerIcon(type, side = 'enemy') {
     const icons = {
-        // 军事设施
-        base: '🏭',
-        port: '⚓',
-        radar: '📡',
+        // 我方无人机
+        our_drone: '✈️',
         
-        // 作战要素
-        combat_zone: '⚔️',
-        sea_area: '🌊',
-        waypoint: '📍',
-        target: '🎯',
-        
-        // 平台
-        drone: '✈️',
-        ship: '🚢',
-        submarine: '🔱'
+        // 敌方单位
+        reconnaissance_drone: '🚁',
+        attack_helicopter: '🚁', 
+        tank: '🏆',
+        armored_vehicle: '🚗',
+        military_base: '🏢'
     };
     
     const colors = {
-        base: '#28a745',
-        port: '#17a2b8',
-        radar: '#ffc107',
-        combat_zone: '#dc3545',
-        sea_area: '#007bff',
-        waypoint: '#6c757d',
-        target: '#fd7e14',
-        drone: '#6f42c1',
-        ship: '#20c997',
-        submarine: '#e83e8c'
+        our_drone: '#007bff',
+        reconnaissance_drone: '#dc3545',
+        attack_helicopter: '#dc3545',
+        tank: '#dc3545',
+        armored_vehicle: '#dc3545',
+        military_base: '#dc3545'
     };
+    
+    const iconKey = side === 'our' ? 'our_drone' : type;
     
     return L.divIcon({
         html: `<div style="
@@ -270,7 +320,7 @@ function getMarkerIcon(type) {
             text-align: center; 
             line-height: 1;
             filter: drop-shadow(1px 1px 2px rgba(0,0,0,0.3));
-            background: ${colors[type] || '#6c757d'};
+            background: ${colors[iconKey] || '#6c757d'};
             border-radius: 50%;
             width: 32px;
             height: 32px;
@@ -278,37 +328,139 @@ function getMarkerIcon(type) {
             align-items: center;
             justify-content: center;
             border: 2px solid white;
-        ">${icons[type] || '📍'}</div>`,
+        ">${icons[iconKey] || '✈️'}</div>`,
         className: 'custom-marker',
         iconSize: [32, 32],
         iconAnchor: [16, 16]
     });
 }
 
-// 获取类型描述
-function getTypeDescription(type) {
-    const descriptions = {
-        base: '军事基地',
-        port: '港口设施',
-        radar: '雷达站点',
-        combat_zone: '作战区域',
-        sea_area: '海域',
-        waypoint: '航路点',
-        target: '目标点',
-        drone: '无人机',
-        ship: '舰船',
-        submarine: '潜艇'
-    };
-    return descriptions[type] || '未知类型';
+// 加载场景数据到地图
+function loadScenarioToMap(scenarioId) {
+    fetch(`/api/scenario/${scenarioId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                currentScenarioData = data.scenario;
+                
+                // 清除现有标记
+                clearMapMarkers();
+                
+                // 更新场景信息显示
+                document.getElementById('currentScenario').textContent = data.scenario.name;
+                
+                // 添加我方无人机标记
+                let ourDroneCount = 0;
+                data.scenario.our_drones.forEach(drone => {
+                    if (drone.lat && drone.lng) {
+                        const lat = parseFloat(drone.lat);
+                        const lng = parseFloat(drone.lng);
+                        
+                        if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+                            const marker = L.marker([lat, lng], { 
+                                icon: getMarkerIcon('our_drone', 'our') 
+                            }).addTo(map);
+                            
+                            marker.bindPopup(`
+                                <div style="min-width: 200px;">
+                                    <h4 style="margin: 0 0 8px 0; color: #2c3e50;">我方无人机</h4>
+                                    <p style="margin: 0 0 6px 0; color: #7f8c8d; font-size: 0.9rem;">
+                                        <strong>编号：</strong>${drone.code || '未设置'}
+                                    </p>
+                                    <p style="margin: 0 0 6px 0; color: #7f8c8d; font-size: 0.9rem;">
+                                        <strong>高度：</strong>${drone.altitude || 100}米
+                                    </p>
+                                    <p style="margin: 0 0 6px 0; color: #7f8c8d; font-size: 0.9rem;">
+                                        <strong>载荷：</strong>雷达${drone.radar || 0}个, HQ9B${drone.hq9b || 0}个
+                                    </p>
+                                    <p style="margin: 0; color: #007bff; font-size: 0.8rem; font-family: monospace;">
+                                        <strong>坐标：</strong>${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E
+                                    </p>
+                                </div>
+                            `);
+                            
+                            droneMarkers.push(marker);
+                            ourDroneCount++;
+                        }
+                    }
+                });
+                
+                // 添加敌方单位标记
+                let enemyUnitCount = 0;
+                data.scenario.enemy_units.forEach(unit => {
+                    if (unit.lat && unit.lng) {
+                        const lat = parseFloat(unit.lat);
+                        const lng = parseFloat(unit.lng);
+                        
+                        if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+                            const marker = L.marker([lat, lng], { 
+                                icon: getMarkerIcon(unit.type, 'enemy') 
+                            }).addTo(map);
+                            
+                            const typeNames = {
+                                'reconnaissance_drone': '侦察无人机',
+                                'attack_helicopter': '武装直升机',
+                                'tank': '坦克',
+                                'armored_vehicle': '装甲车',
+                                'military_base': '军事基地'
+                            };
+                            
+                            marker.bindPopup(`
+                                <div style="min-width: 200px;">
+                                    <h4 style="margin: 0 0 8px 0; color: #dc3545;">${typeNames[unit.type] || '单位'}</h4>
+                                    <p style="margin: 0 0 6px 0; color: #7f8c8d; font-size: 0.9rem;">
+                                        <strong>编号：</strong>${unit.code || '未设置'}
+                                    </p>
+                                    ${unit.altitude > 0 ? `<p style="margin: 0 0 6px 0; color: #7f8c8d; font-size: 0.9rem;">
+                                        <strong>高度：</strong>${unit.altitude}米
+                                    </p>` : ''}
+                                    <p style="margin: 0; color: #dc3545; font-size: 0.8rem; font-family: monospace;">
+                                        <strong>坐标：</strong>${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E
+                                    </p>
+                                </div>
+                            `);
+                            
+                            enemyMarkers.push(marker);
+                            enemyUnitCount++;
+                        }
+                    }
+                });
+                
+                // 更新计数显示
+                document.getElementById('droneCount').textContent = ourDroneCount;
+                document.getElementById('enemyCount').textContent = enemyUnitCount;
+                
+                // 自动调整地图视野以包含所有标记
+                if (droneMarkers.length > 0 || enemyMarkers.length > 0) {
+                    const allMarkers = [...droneMarkers, ...enemyMarkers];
+                    const group = new L.featureGroup(allMarkers);
+                    map.fitBounds(group.getBounds().pad(0.1));
+                }
+                
+                saveLog(`成功加载场景 "${data.scenario.name}"，我方无人机 ${ourDroneCount} 架，敌方单位 ${enemyUnitCount} 个`);
+            } else {
+                saveLog('加载场景失败: ' + data.message, 'ERROR');
+                alert('加载场景失败: ' + data.message);
+            }
+        })
+        .catch(error => {
+            saveLog('获取场景数据时发生错误: ' + error.message, 'ERROR');
+            alert('获取场景数据时发生错误: ' + error.message);
+        });
 }
 
 // 仿真控制功能
 function startSimulation() {
+    if (!currentScenarioData) {
+        alert('请先选择并加载场景');
+        return;
+    }
+    
     if (!isSimulationRunning) {
         isSimulationRunning = true;
         document.getElementById('simStatus').textContent = '运行中';
         document.getElementById('simStatus').className = 'status-badge running';
-        console.log('仿真开始');
+        saveLog(`开始仿真，当前场景: ${currentScenarioData.name}`);
     }
 }
 
@@ -317,7 +469,7 @@ function pauseSimulation() {
         isSimulationRunning = false;
         document.getElementById('simStatus').textContent = '已暂停';
         document.getElementById('simStatus').className = 'status-badge paused';
-        console.log('仿真暂停');
+        saveLog('仿真暂停');
     }
 }
 
@@ -325,7 +477,7 @@ function stopSimulation() {
     isSimulationRunning = false;
     document.getElementById('simStatus').textContent = '就绪';
     document.getElementById('simStatus').className = 'status-badge';
-    console.log('仿真停止');
+    saveLog('仿真停止');
 }
 
 // 页面加载完成后初始化
@@ -333,12 +485,25 @@ document.addEventListener('DOMContentLoaded', function() {
     // 初始化地图
     initMap();
     
+    // 加载场景列表
+    loadScenarios();
+    
     // 绑定按钮事件
     document.getElementById('startSim').addEventListener('click', startSimulation);
     document.getElementById('pauseSim').addEventListener('click', pauseSimulation);
     document.getElementById('stopSim').addEventListener('click', stopSimulation);
     
-    console.log('仿真评估页面初始化完成');
+    // 绑定加载场景按钮事件
+    document.getElementById('loadScenario').addEventListener('click', function() {
+        const scenarioId = document.getElementById('scenarioSelect').value;
+        if (scenarioId) {
+            loadScenarioToMap(scenarioId);
+        } else {
+            alert('请先选择一个场景');
+        }
+    });
+    
+    saveLog('仿真评估页面初始化完成');
 });
 </script>
 

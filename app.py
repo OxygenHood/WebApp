@@ -2,7 +2,9 @@
 import sqlite3
 import hashlib
 import json
-from flask import Flask, render_template, request, redirect, url_for, session, flash
+import os
+from datetime import datetime
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-here-change-in-production'  # 用于会话管理
@@ -194,23 +196,8 @@ def create_scenario():
                 'drones': drone_details  # 每架无人机的详细配置
             })
             
-            # 处理敌方单位数据
-            enemy_data = {
-                'reconnaissance_drone': {'count': 0, 'positions': []},
-                'attack_helicopter': {'count': 0, 'positions': []},
-                'tank': {'count': 0, 'positions': []},
-                'armored_vehicle': {'count': 0, 'positions': []},
-                'military_base': {'count': 0, 'positions': []}
-            }
-            
-            for unit in enemy_units:
-                unit_type = unit['type']
-                if unit_type in enemy_data:
-                    enemy_data[unit_type]['count'] += 1
-                    if unit.get('altitude', 0) > 0:
-                        enemy_data[unit_type]['positions'].append(f"{unit['lat']},{unit['lng']},{unit['altitude']}")
-                    else:
-                        enemy_data[unit_type]['positions'].append(f"{unit['lat']},{unit['lng']}")
+            # 保存敌方单位的详细数据（包含编号）
+            enemy_units_details = json.dumps(enemy_units)
             
             # 连接数据库
             conn = get_db_connection()
@@ -332,10 +319,11 @@ def edit_scenario(scenario_id):
                 unit_type = unit['type']
                 if unit_type in enemy_data:
                     enemy_data[unit_type]['count'] += 1
+                    # 在位置信息中包含编号
                     if unit.get('altitude', 0) > 0:
-                        enemy_data[unit_type]['positions'].append(f"{unit['lat']},{unit['lng']},{unit['altitude']}")
+                        enemy_data[unit_type]['positions'].append(f"{unit['lat']},{unit['lng']},{unit['altitude']},{unit.get('code', '')}")
                     else:
-                        enemy_data[unit_type]['positions'].append(f"{unit['lat']},{unit['lng']}")
+                        enemy_data[unit_type]['positions'].append(f"{unit['lat']},{unit['lng']},{unit.get('code', '')}")
             
             # 连接数据库
             conn = get_db_connection()
@@ -442,6 +430,230 @@ def delete_scenario(scenario_id):
         flash(f'删除场景时发生错误：{str(e)}', 'error')
     
     return redirect(url_for('pipeline'))
+
+
+@app.route('/api/save_log', methods=['POST'])
+@login_required
+def save_log():
+    """保存日志到文件"""
+    try:
+        data = request.get_json()
+        log_message = data.get('message', '')
+        log_level = data.get('level', 'INFO')
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
+        # 确保logs目录存在
+        logs_dir = 'logs'
+        if not os.path.exists(logs_dir):
+            os.makedirs(logs_dir)
+        
+        # 生成日志文件名（按日期分类）
+        log_file = os.path.join(logs_dir, f'simulation_{datetime.now().strftime("%Y%m%d")}.txt')
+        
+        # 格式化日志条目
+        log_entry = f'[{timestamp}] [{log_level}] [{session.get("username", "unknown")}] {log_message}\n'
+        
+        # 写入日志文件
+        with open(log_file, 'a', encoding='utf-8') as f:
+            f.write(log_entry)
+        
+        return jsonify({'success': True, 'message': '日志保存成功'})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'保存日志失败: {str(e)}'}), 500
+
+
+@app.route('/api/scenarios', methods=['GET'])
+@login_required
+def get_scenarios():
+    """获取所有场景列表"""
+    try:
+        conn = get_db_connection()
+        scenarios = conn.execute(
+            '''SELECT id, name, description, 
+               our_drone_count, enemy_reconnaissance_drones, enemy_attack_helicopters,
+               enemy_tanks, enemy_armored_vehicles, enemy_military_bases
+               FROM scenarios 
+               WHERE status = 'active' 
+               ORDER BY created_at DESC'''
+        ).fetchall()
+        conn.close()
+        
+        scenario_list = []
+        for scenario in scenarios:
+            scenario_list.append({
+                'id': scenario['id'],
+                'name': scenario['name'],
+                'description': scenario['description'],
+                'our_drone_count': scenario['our_drone_count'],
+                'enemy_total': (scenario['enemy_reconnaissance_drones'] or 0) + 
+                             (scenario['enemy_attack_helicopters'] or 0) + 
+                             (scenario['enemy_tanks'] or 0) + 
+                             (scenario['enemy_armored_vehicles'] or 0) + 
+                             (scenario['enemy_military_bases'] or 0)
+            })
+        
+        return jsonify({'success': True, 'scenarios': scenario_list})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'获取场景列表失败: {str(e)}'}), 500
+
+
+@app.route('/api/scenario/<int:scenario_id>', methods=['GET'])
+@login_required
+def get_scenario_detail(scenario_id):
+    """获取场景详细信息"""
+    try:
+        conn = get_db_connection()
+        scenario = conn.execute(
+            'SELECT * FROM scenarios WHERE id = ? AND status = "active"', (scenario_id,)
+        ).fetchone()
+        conn.close()
+        
+        if not scenario:
+            return jsonify({'success': False, 'message': '场景不存在'}), 404
+        
+        # 解析我方无人机数据
+        our_drones = []
+        if scenario['our_drone_payloads']:
+            try:
+                payloads = json.loads(scenario['our_drone_payloads'])
+                if 'drones' in payloads:
+                    our_drones = payloads['drones']
+            except:
+                pass
+        
+        # 如果没有详细数据，使用位置数据
+        if not our_drones and scenario['our_drone_positions']:
+            positions = scenario['our_drone_positions'].split('\n')
+            for i, pos in enumerate(positions):
+                if pos.strip():
+                    coords = pos.split(',')
+                    if len(coords) >= 2:
+                        our_drones.append({
+                            'id': i + 1,
+                            'code': f'无人机-{i + 1}',
+                            'lat': coords[0],
+                            'lng': coords[1],
+                            'altitude': int(coords[2]) if len(coords) > 2 else 100,
+                            'radar': 0,
+                            'hq9b': 0
+                        })
+        
+        # 解析敌方单位数据（优先使用详细数据）
+        enemy_units = []
+        
+        # 先尝试使用详细的JSON数据（新格式）
+        try:
+            # 假设我们将来会在scenario表中添加enemy_units_details字段
+            # 暂时使用老方法解析
+            pass
+        except:
+            pass
+        
+        # 侦察无人机
+        if scenario['enemy_reconnaissance_drones'] and scenario['enemy_reconnaissance_positions']:
+            positions = scenario['enemy_reconnaissance_positions'].split('\n')
+            for i, pos in enumerate(positions[:scenario['enemy_reconnaissance_drones']]):
+                if pos.strip():
+                    coords = pos.split(',')
+                    if len(coords) >= 2:
+                        # 如果有第4个字段，则认为是编号
+                        code = coords[3].strip() if len(coords) > 3 else f'侦察无人机-{i + 1}'
+                        enemy_units.append({
+                            'id': f'recon_{i + 1}',
+                            'type': 'reconnaissance_drone',
+                            'code': code,
+                            'lat': float(coords[0]),
+                            'lng': float(coords[1]),
+                            'altitude': int(coords[2]) if len(coords) > 2 else 100
+                        })
+        
+        # 武装直升机
+        if scenario['enemy_attack_helicopters'] and scenario['enemy_helicopter_positions']:
+            positions = scenario['enemy_helicopter_positions'].split('\n')
+            for i, pos in enumerate(positions[:scenario['enemy_attack_helicopters']]):
+                if pos.strip():
+                    coords = pos.split(',')
+                    if len(coords) >= 2:
+                        # 如果有第4个或第3个字段，则认为是编号
+                        code = coords[3].strip() if len(coords) > 3 else (coords[2].strip() if len(coords) == 3 and not coords[2].isdigit() else f'武装直升机-{i + 1}')
+                        altitude = int(coords[2]) if len(coords) > 3 or (len(coords) == 3 and coords[2].isdigit()) else 100
+                        enemy_units.append({
+                            'id': f'heli_{i + 1}',
+                            'type': 'attack_helicopter',
+                            'code': code,
+                            'lat': float(coords[0]),
+                            'lng': float(coords[1]),
+                            'altitude': altitude
+                        })
+        
+        # 坦克
+        if scenario['enemy_tanks'] and scenario['enemy_tank_positions']:
+            positions = scenario['enemy_tank_positions'].split('\n')
+            for i, pos in enumerate(positions[:scenario['enemy_tanks']]):
+                if pos.strip():
+                    coords = pos.split(',')
+                    if len(coords) >= 2:
+                        # 第3个字段是编号（地面单位没有高度）
+                        code = coords[2].strip() if len(coords) > 2 else f'坦克-{i + 1}'
+                        enemy_units.append({
+                            'id': f'tank_{i + 1}',
+                            'type': 'tank',
+                            'code': code,
+                            'lat': float(coords[0]),
+                            'lng': float(coords[1]),
+                            'altitude': 0
+                        })
+        
+        # 装甲车
+        if scenario['enemy_armored_vehicles'] and scenario['enemy_vehicle_positions']:
+            positions = scenario['enemy_vehicle_positions'].split('\n')
+            for i, pos in enumerate(positions[:scenario['enemy_armored_vehicles']]):
+                if pos.strip():
+                    coords = pos.split(',')
+                    if len(coords) >= 2:
+                        # 第3个字段是编号（地面单位没有高度）
+                        code = coords[2].strip() if len(coords) > 2 else f'装甲车-{i + 1}'
+                        enemy_units.append({
+                            'id': f'vehicle_{i + 1}',
+                            'type': 'armored_vehicle',
+                            'code': code,
+                            'lat': float(coords[0]),
+                            'lng': float(coords[1]),
+                            'altitude': 0
+                        })
+        
+        # 军事基地
+        if scenario['enemy_military_bases'] and scenario['enemy_base_positions']:
+            positions = scenario['enemy_base_positions'].split('\n')
+            for i, pos in enumerate(positions[:scenario['enemy_military_bases']]):
+                if pos.strip():
+                    coords = pos.split(',')
+                    if len(coords) >= 2:
+                        # 第3个字段是编号（地面单位没有高度）
+                        code = coords[2].strip() if len(coords) > 2 else f'军事基地-{i + 1}'
+                        enemy_units.append({
+                            'id': f'base_{i + 1}',
+                            'type': 'military_base',
+                            'code': code,
+                            'lat': float(coords[0]),
+                            'lng': float(coords[1]),
+                            'altitude': 0
+                        })
+        
+        scenario_data = {
+            'id': scenario['id'],
+            'name': scenario['name'],
+            'description': scenario['description'],
+            'our_drones': our_drones,
+            'enemy_units': enemy_units
+        }
+        
+        return jsonify({'success': True, 'scenario': scenario_data})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'获取场景详情失败: {str(e)}'}), 500
 
 
 if __name__ == '__main__':

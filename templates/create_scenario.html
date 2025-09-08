@@ -491,6 +491,40 @@ let droneCounter = 1;
 let unitCounter = 1;
 let currentInputTarget = null; // 当前正在设置坐标的输入框
 
+// 日志保存函数
+function saveLog(message, level = 'INFO') {
+    // 在控制台显示日志
+    console.log(message);
+    
+    // 检查消息长度，如果太长则截断
+    let logMessage = message;
+    if (logMessage.length > 2000) {
+        logMessage = logMessage.substring(0, 1997) + '...';
+        console.warn('日志消息过长，已截断至 2000 个字符');
+    }
+    
+    // 发送日志到后端保存
+    fetch('/api/save_log', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            message: logMessage,
+            level: level
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (!data.success) {
+            console.error('保存日志失败:', data.message);
+        }
+    })
+    .catch(error => {
+        console.error('发送日志请求失败:', error);
+    });
+}
+
 // 单位类型映射
 const unitTypeNames = {
     'reconnaissance_drone': '侦察无人机',
@@ -523,6 +557,7 @@ function selectLocation(lat, lng) {
     
     selectedMarker = L.marker([lat, lng]).addTo(map);
     document.getElementById('selectedCoords').textContent = `已选择: ${selectedCoords[0]}, ${selectedCoords[1]}`;
+    saveLog(`在地图上选择了位置: ${selectedCoords[0]}, ${selectedCoords[1]}`);
 }
 
 function clearMapSelection() {
@@ -570,6 +605,7 @@ function confirmMapSelection() {
         const changeEvent = new Event('change', { bubbles: true });
         currentInputTarget.dispatchEvent(changeEvent);
         
+        saveLog(`确认选择位置: ${selectedCoords[0]},${selectedCoords[1]}，已更新到输入框`);
         closeMapModal();
     } else {
         alert('请先在地图上选择位置');
@@ -589,6 +625,7 @@ function addOurDrone() {
     };
     
     ourDrones.push(drone);
+    saveLog(`添加了新的我方无人机，ID: ${drone.id}，当前总数: ${ourDrones.length}`);
     updateOurDronesList();
 }
 
@@ -674,7 +711,11 @@ function updateDronePosition(droneId, positionStr) {
 
 // 删除我方无人机
 function removeOurDrone(droneId) {
+    const droneToRemove = ourDrones.find(d => d.id === droneId);
     ourDrones = ourDrones.filter(d => d.id !== droneId);
+    if (droneToRemove) {
+        saveLog(`删除了我方无人机，编号: ${droneToRemove.code || '未命名'}，ID: ${droneId}，剩余数量: ${ourDrones.length}`);
+    }
     updateOurDronesList();
 }
 
@@ -690,6 +731,7 @@ function addEnemyUnit(unitType) {
     };
     
     enemyUnits.push(unit);
+    saveLog(`添加了敌方单位: ${unitTypeNames[unitType]}，ID: ${unit.id}，当前敌方单位总数: ${enemyUnits.length}`);
     updateEnemyUnitsList();
 }
 
@@ -765,14 +807,21 @@ function updateEnemyUnitPosition(unitId, positionStr) {
 
 // 删除敌方单位
 function removeEnemyUnit(unitId) {
+    const unitToRemove = enemyUnits.find(u => u.id === unitId);
     enemyUnits = enemyUnits.filter(u => u.id !== unitId);
+    if (unitToRemove) {
+        saveLog(`删除了敌方单位: ${unitTypeNames[unitToRemove.type]}，编号: ${unitToRemove.code || '未命名'}，ID: ${unitId}，剩余数量: ${enemyUnits.length}`);
+    }
     updateEnemyUnitsList();
 }
 
 // 表单提交时准备数据
 function prepareFormData() {
-    // 调试：显示当前无人机数据
-    console.log('当前无人机数据:', ourDrones);
+    // 调试：显示当前无人机数据（分条记录避免截断）
+    saveLog(`无人机总数: ${ourDrones.length}`, 'DEBUG');
+    ourDrones.forEach((drone, index) => {
+        saveLog(`无人机${index + 1}: 编号=${drone.code}, 位置=${drone.lat},${drone.lng}, 高度=${drone.altitude}, 雷达=${drone.radar}, HQ9B=${drone.hq9b}`, 'DEBUG');
+    });
     
     // 验证是否至少有一架无人机
     if (ourDrones.length === 0) {
@@ -839,10 +888,16 @@ document.addEventListener('DOMContentLoaded', function() {
     updateOurDronesList();
     updateEnemyUnitsList();
     
+    saveLog('创建场景页面初始化完成');
+    
     // 表单提交事件
     document.getElementById('scenarioForm').addEventListener('submit', function(e) {
+        saveLog('开始提交场景创建表单');
         if (!prepareFormData()) {
+            saveLog('表单验证失败，取消提交', 'ERROR');
             e.preventDefault();
+        } else {
+            saveLog(`表单验证成功，准备提交场景数据：无人机${ourDrones.length}架，敌方单位${enemyUnits.length}个`);
         }
     });
     
