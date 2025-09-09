@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS scenarios (
 
 # 插入初始用户 (密码应该哈希存储)
 username = 'admin'
-password = '80308057'
+password = '123456'
 password_hash = hashlib.sha256(password.encode()).hexdigest()
 
 try:

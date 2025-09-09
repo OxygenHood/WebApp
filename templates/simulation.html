@@ -59,9 +59,6 @@
                 <button class="btn btn-primary" id="startSim">
                     <i class="fas fa-play"></i> 开始仿真
                 </button>
-                <button class="btn btn-warning" id="pauseSim">
-                    <i class="fas fa-pause"></i> 暂停
-                </button>
                 <button class="btn btn-danger" id="stopSim">
                     <i class="fas fa-stop"></i> 停止
                 </button>
@@ -144,6 +141,32 @@
     padding: 6px 12px;
     font-size: 12px;
 }
+
+/* 仿真状态样式 */
+.status-badge {
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: bold;
+    background-color: #6c757d;
+    color: white;
+}
+
+.status-badge.running {
+    background-color: #28a745;
+    animation: pulse 2s infinite;
+}
+
+.status-badge.paused {
+    background-color: #ffc107;
+    color: #212529;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.7; }
+    100% { opacity: 1; }
+}
 </style>
 
 <!-- Leaflet.js JavaScript -->
@@ -157,7 +180,26 @@ let map;
 let droneMarkers = [];
 let enemyMarkers = [];
 let isSimulationRunning = false;
+let isPaused = false;
 let currentScenarioData = null;
+let simulationInterval = null;
+let simulationSpeed = 1000; // 仿真更新间隔(毫秒)
+
+// 单位运动数据
+let unitMovementData = {
+    ourDrones: [],
+    enemyUnits: []
+};
+
+// 单位速度配置 (km/h)
+const UNIT_SPEEDS = {
+    our_drone: 150, // 我方无人机速度
+    reconnaissance_drone: 120,
+    attack_helicopter: 200,
+    tank: 50,
+    armored_vehicle: 80,
+    military_base: 0 // 基地不移动
+};
 
 // 日志保存函数
 function saveLog(message, level = 'INFO') {
@@ -335,6 +377,148 @@ function getMarkerIcon(type, side = 'enemy') {
     });
 }
 
+// 生成随机目标位置
+function generateRandomTarget(currentLat, currentLng, maxDistance = 0.1) {
+    // 生成随机方向和距离
+    const angle = Math.random() * 2 * Math.PI;
+    const distance = Math.random() * maxDistance;
+    
+    // 计算新的经纬度
+    const newLat = currentLat + (distance * Math.cos(angle));
+    const newLng = currentLng + (distance * Math.sin(angle));
+    
+    return { lat: newLat, lng: newLng };
+}
+
+// 计算两点之间的距离 (公里)
+function calculateDistance(lat1, lng1, lat2, lng2) {
+    const R = 6371; // 地球半径（公里）
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLng/2) * Math.sin(dLng/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+}
+
+// 初始化单位运动数据
+function initializeMovementData() {
+    unitMovementData.ourDrones = [];
+    unitMovementData.enemyUnits = [];
+    
+    // 初始化我方无人机运动数据
+    droneMarkers.forEach((marker, index) => {
+        const currentPos = marker.getLatLng();
+        const target = generateRandomTarget(currentPos.lat, currentPos.lng, 0.2);
+        
+        unitMovementData.ourDrones.push({
+            marker: marker,
+            currentPos: currentPos,
+            targetPos: target,
+            speed: UNIT_SPEEDS.our_drone,
+            data: currentScenarioData.our_drones[index] || {}
+        });
+    });
+    
+    // 初始化敌方单位运动数据
+    enemyMarkers.forEach((marker, index) => {
+        const currentPos = marker.getLatLng();
+        const unitData = currentScenarioData.enemy_units[index] || {};
+        const unitType = unitData.type || 'reconnaissance_drone';
+        
+        // 基地不移动
+        if (unitType === 'military_base') {
+            return;
+        }
+        
+        const target = generateRandomTarget(currentPos.lat, currentPos.lng, 0.15);
+        
+        unitMovementData.enemyUnits.push({
+            marker: marker,
+            currentPos: currentPos,
+            targetPos: target,
+            speed: UNIT_SPEEDS[unitType] || 100,
+            type: unitType,
+            data: unitData
+        });
+    });
+    
+    saveLog(`初始化运动数据：我方无人机 ${unitMovementData.ourDrones.length} 架，敌方移动单位 ${unitMovementData.enemyUnits.length} 个`);
+}
+
+// 更新单位位置
+function updateUnitPositions() {
+    if (!isSimulationRunning || isPaused) return;
+    
+    const updateInterval = simulationSpeed / 1000; // 转换为秒
+    
+    // 更新我方无人机位置
+    unitMovementData.ourDrones.forEach(unit => {
+        moveUnitTowardsTarget(unit, updateInterval);
+    });
+    
+    // 更新敌方单位位置
+    unitMovementData.enemyUnits.forEach(unit => {
+        moveUnitTowardsTarget(unit, updateInterval);
+    });
+}
+
+// 移动单位朝向目标
+function moveUnitTowardsTarget(unit, timeStep) {
+    const { marker, currentPos, targetPos, speed } = unit;
+    
+    // 计算距离目标的距离
+    const distanceToTarget = calculateDistance(
+        currentPos.lat, currentPos.lng,
+        targetPos.lat, targetPos.lng
+    );
+    
+    // 如果已经接近目标，生成新目标
+    if (distanceToTarget < 0.01) {
+        unit.targetPos = generateRandomTarget(currentPos.lat, currentPos.lng, 0.2);
+        return;
+    }
+    
+    // 计算移动距离（速度 * 时间）
+    const moveDistance = (speed * timeStep) / 3600; // 转换为公里
+    
+    // 计算移动方向
+    const bearing = Math.atan2(
+        targetPos.lng - currentPos.lng,
+        targetPos.lat - currentPos.lat
+    );
+    
+    // 计算新位置
+    const moveRatio = Math.min(moveDistance / distanceToTarget, 1);
+    const newLat = currentPos.lat + (targetPos.lat - currentPos.lat) * moveRatio;
+    const newLng = currentPos.lng + (targetPos.lng - currentPos.lng) * moveRatio;
+    
+    // 更新标记位置
+    const newPos = L.latLng(newLat, newLng);
+    marker.setLatLng(newPos);
+    unit.currentPos = newPos;
+}
+
+// 开始仿真循环
+function startSimulationLoop() {
+    if (simulationInterval) {
+        clearInterval(simulationInterval);
+    }
+    
+    simulationInterval = setInterval(updateUnitPositions, simulationSpeed);
+    saveLog('仿真循环已启动');
+}
+
+// 停止仿真循环
+function stopSimulationLoop() {
+    if (simulationInterval) {
+        clearInterval(simulationInterval);
+        simulationInterval = null;
+        saveLog('仿真循环已停止');
+    }
+}
+
 // 加载场景数据到地图
 function loadScenarioToMap(scenarioId) {
     fetch(`/api/scenario/${scenarioId}`)
@@ -351,7 +535,7 @@ function loadScenarioToMap(scenarioId) {
                 
                 // 添加我方无人机标记
                 let ourDroneCount = 0;
-                data.scenario.our_drones.forEach(drone => {
+                data.scenario.our_drones.forEach((drone, index) => {
                     if (drone.lat && drone.lng) {
                         const lat = parseFloat(drone.lat);
                         const lng = parseFloat(drone.lng);
@@ -361,23 +545,32 @@ function loadScenarioToMap(scenarioId) {
                                 icon: getMarkerIcon('our_drone', 'our') 
                             }).addTo(map);
                             
-                            marker.bindPopup(`
-                                <div style="min-width: 200px;">
-                                    <h4 style="margin: 0 0 8px 0; color: #2c3e50;">我方无人机</h4>
-                                    <p style="margin: 0 0 6px 0; color: #7f8c8d; font-size: 0.9rem;">
-                                        <strong>编号：</strong>${drone.code || '未设置'}
-                                    </p>
-                                    <p style="margin: 0 0 6px 0; color: #7f8c8d; font-size: 0.9rem;">
-                                        <strong>高度：</strong>${drone.altitude || 100}米
-                                    </p>
-                                    <p style="margin: 0 0 6px 0; color: #7f8c8d; font-size: 0.9rem;">
-                                        <strong>载荷：</strong>雷达${drone.radar || 0}个, HQ9B${drone.hq9b || 0}个
-                                    </p>
-                                    <p style="margin: 0; color: #007bff; font-size: 0.8rem; font-family: monospace;">
-                                        <strong>坐标：</strong>${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E
-                                    </p>
-                                </div>
-                            `);
+                            // 绑定动态弹出窗口 - 使用 this 指向标记本身
+                            marker.bindPopup(function() {
+                                const currentPos = this.getLatLng();
+                                const droneData = this.droneData;
+                                return `
+                                    <div style="min-width: 200px;">
+                                        <h4 style="margin: 0 0 8px 0; color: #2c3e50;">我方无人机</h4>
+                                        <p style="margin: 0 0 6px 0; color: #7f8c8d; font-size: 0.9rem;">
+                                            <strong>编号：</strong>${droneData.code || '未设置'}
+                                        </p>
+                                        <p style="margin: 0 0 6px 0; color: #7f8c8d; font-size: 0.9rem;">
+                                            <strong>高度：</strong>${droneData.altitude || 100}米
+                                        </p>
+                                        <p style="margin: 0 0 6px 0; color: #7f8c8d; font-size: 0.9rem;">
+                                            <strong>载荷：</strong>雷达${droneData.radar || 0}个, HQ9B${droneData.hq9b || 0}个
+                                        </p>
+                                        <p style="margin: 0; color: #007bff; font-size: 0.8rem; font-family: monospace;">
+                                            <strong>坐标：</strong>${currentPos.lat.toFixed(4)}°N, ${currentPos.lng.toFixed(4)}°E
+                                        </p>
+                                    </div>
+                                `;
+                            });
+                            
+                            // 存储原始数据到标记对象中
+                            marker.droneData = drone;
+                            marker.droneIndex = index;
                             
                             droneMarkers.push(marker);
                             ourDroneCount++;
@@ -387,7 +580,7 @@ function loadScenarioToMap(scenarioId) {
                 
                 // 添加敌方单位标记
                 let enemyUnitCount = 0;
-                data.scenario.enemy_units.forEach(unit => {
+                data.scenario.enemy_units.forEach((unit, index) => {
                     if (unit.lat && unit.lng) {
                         const lat = parseFloat(unit.lat);
                         const lng = parseFloat(unit.lng);
@@ -405,20 +598,29 @@ function loadScenarioToMap(scenarioId) {
                                 'military_base': '军事基地'
                             };
                             
-                            marker.bindPopup(`
-                                <div style="min-width: 200px;">
-                                    <h4 style="margin: 0 0 8px 0; color: #dc3545;">${typeNames[unit.type] || '单位'}</h4>
-                                    <p style="margin: 0 0 6px 0; color: #7f8c8d; font-size: 0.9rem;">
-                                        <strong>编号：</strong>${unit.code || '未设置'}
-                                    </p>
-                                    ${unit.altitude > 0 ? `<p style="margin: 0 0 6px 0; color: #7f8c8d; font-size: 0.9rem;">
-                                        <strong>高度：</strong>${unit.altitude}米
-                                    </p>` : ''}
-                                    <p style="margin: 0; color: #dc3545; font-size: 0.8rem; font-family: monospace;">
-                                        <strong>坐标：</strong>${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E
-                                    </p>
-                                </div>
-                            `);
+                            // 绑定动态弹出窗口 - 使用 this 指向标记本身
+                            marker.bindPopup(function() {
+                                const currentPos = this.getLatLng();
+                                const unitData = this.unitData;
+                                return `
+                                    <div style="min-width: 200px;">
+                                        <h4 style="margin: 0 0 8px 0; color: #dc3545;">${typeNames[unitData.type] || '单位'}</h4>
+                                        <p style="margin: 0 0 6px 0; color: #7f8c8d; font-size: 0.9rem;">
+                                            <strong>编号：</strong>${unitData.code || '未设置'}
+                                        </p>
+                                        ${unitData.altitude > 0 ? `<p style="margin: 0 0 6px 0; color: #7f8c8d; font-size: 0.9rem;">
+                                            <strong>高度：</strong>${unitData.altitude}米
+                                        </p>` : ''}
+                                        <p style="margin: 0; color: #dc3545; font-size: 0.8rem; font-family: monospace;">
+                                            <strong>坐标：</strong>${currentPos.lat.toFixed(4)}°N, ${currentPos.lng.toFixed(4)}°E
+                                        </p>
+                                    </div>
+                                `;
+                            });
+                            
+                            // 存储原始数据到标记对象中
+                            marker.unitData = unit;
+                            marker.unitIndex = index;
                             
                             enemyMarkers.push(marker);
                             enemyUnitCount++;
@@ -457,27 +659,78 @@ function startSimulation() {
     }
     
     if (!isSimulationRunning) {
+        // 开始新的仿真
         isSimulationRunning = true;
+        isPaused = false;
+        
+        // 初始化运动数据
+        initializeMovementData();
+        
+        // 启动仿真循环
+        startSimulationLoop();
+        
+        // 更新界面
         document.getElementById('simStatus').textContent = '运行中';
         document.getElementById('simStatus').className = 'status-badge running';
+        document.getElementById('startSim').innerHTML = '<i class="fas fa-pause"></i> 暂停';
+        
         saveLog(`开始仿真，当前场景: ${currentScenarioData.name}`);
-    }
-}
-
-function pauseSimulation() {
-    if (isSimulationRunning) {
-        isSimulationRunning = false;
+    } else if (isPaused) {
+        // 继续仿真
+        isPaused = false;
+        
+        // 重新启动仿真循环
+        startSimulationLoop();
+        
+        // 更新界面
+        document.getElementById('simStatus').textContent = '运行中';
+        document.getElementById('simStatus').className = 'status-badge running';
+        document.getElementById('startSim').innerHTML = '<i class="fas fa-pause"></i> 暂停';
+        
+        saveLog('继续仿真');
+    } else {
+        // 暂停仿真
+        isPaused = true;
+        
+        // 停止仿真循环
+        stopSimulationLoop();
+        
+        // 更新界面
         document.getElementById('simStatus').textContent = '已暂停';
         document.getElementById('simStatus').className = 'status-badge paused';
+        document.getElementById('startSim').innerHTML = '<i class="fas fa-play"></i> 继续';
+        
         saveLog('仿真暂停');
     }
 }
 
+function pauseSimulation() {
+    // 这个函数保留但不再使用，因为已经移除了暂停按钮
+    // 暂停功能现在集成在 startSimulation 函数中
+}
+
 function stopSimulation() {
+    // 停止仿真
     isSimulationRunning = false;
+    isPaused = false;
+    
+    // 停止仿真循环
+    stopSimulationLoop();
+    
+    // 重新加载场景以恢复初始位置
+    if (currentScenarioData) {
+        const scenarioSelect = document.getElementById('scenarioSelect');
+        if (scenarioSelect.value) {
+            loadScenarioToMap(scenarioSelect.value);
+        }
+    }
+    
+    // 更新界面
     document.getElementById('simStatus').textContent = '就绪';
     document.getElementById('simStatus').className = 'status-badge';
-    saveLog('仿真停止');
+    document.getElementById('startSim').innerHTML = '<i class="fas fa-play"></i> 开始仿真';
+    
+    saveLog('仿真停止，单位位置已重置');
 }
 
 // 页面加载完成后初始化
@@ -490,7 +743,6 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // 绑定按钮事件
     document.getElementById('startSim').addEventListener('click', startSimulation);
-    document.getElementById('pauseSim').addEventListener('click', pauseSimulation);
     document.getElementById('stopSim').addEventListener('click', stopSimulation);
     
     // 绑定加载场景按钮事件
