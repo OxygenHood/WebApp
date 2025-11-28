@@ -48,8 +48,30 @@ def ensure_models_table():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )'''
     )
+    deduplicate_models(conn)
+    # 确保唯一索引存在；如果旧表缺少 UNIQUE，此索引会限制重复插入
+    conn.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_models_config_path ON models(config_path)')
     conn.commit()
     conn.close()
+
+def deduplicate_models(conn):
+    """删除 config_path 重复的记录，保留最小 id"""
+    try:
+        duplicates = conn.execute(
+            '''SELECT MIN(id) AS keep_id, config_path
+               FROM models
+               GROUP BY config_path
+               HAVING COUNT(*) > 1'''
+        ).fetchall()
+        for row in duplicates:
+            keep_id = row['keep_id']
+            cfg = row['config_path']
+            conn.execute(
+                'DELETE FROM models WHERE config_path = ? AND id != ?',
+                (cfg, keep_id)
+            )
+    except Exception:
+        pass
 
 # 解析进度文件，获取最新步数与最佳成绩
 def parse_progress(progress_path):
