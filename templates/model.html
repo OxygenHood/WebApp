@@ -82,16 +82,14 @@
                                     </div>
                                 </div>
 
-                                <div class="path-block">
-                                    <div class="path-label"><i class="fas fa-file-code"></i> 配置</div>
-                                    <div class="path-value"><code>{{ model.config_path }}</code></div>
+                                <div class="card-actions">
+                                    <a class="btn btn-outline" href="{{ url_for('model_detail', model_id=model.id) }}">
+                                        <i class="fas fa-info-circle"></i> 查看配置
+                                    </a>
+                                    <a class="btn btn-primary" href="{{ url_for('model_reward_image', model_id=model.id) }}" target="_blank">
+                                        <i class="fas fa-chart-line"></i> 奖励曲线
+                                    </a>
                                 </div>
-                                {% if model.progress_path %}
-                                <div class="path-block">
-                                    <div class="path-label"><i class="fas fa-chart-line"></i> 进度</div>
-                                    <div class="path-value"><code>{{ model.progress_path }}</code></div>
-                                </div>
-                                {% endif %}
                             </div>
                         {% endfor %}
                     </div>
@@ -247,6 +245,11 @@
     margin: 0.25rem 0 0;
     font-size: 0.95rem;
     color: #9ca3af;
+}
+.card-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
 }
 @media (max-width: 768px) {
     .model-grid {

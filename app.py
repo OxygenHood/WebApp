@@ -4,7 +4,7 @@ import hashlib
 import json
 import os
 from datetime import datetime
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, send_file
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-here-change-in-production'  # 用于会话管理
@@ -18,6 +18,14 @@ MODEL_CATEGORIES = {
     'target_allocation': '目标分配',
     'fire_allocaltion': '火力分配'  # 保持与现有目录一致
 }
+
+def get_abs_path(path):
+    """构造绝对路径并校验在模型根目录内"""
+    abs_root = os.path.abspath(MODEL_ROOT)
+    abs_path = os.path.abspath(path)
+    if not abs_path.startswith(abs_root):
+        raise ValueError('非法路径访问')
+    return abs_path
 
 # 确保模型表存在
 def ensure_models_table():
@@ -282,21 +290,89 @@ def pipeline():
 @login_required
 def model():
     """模型管理路由"""
-    models = sync_models_from_fs()
+    sync_models_from_fs()
+    conn = get_db_connection()
+    rows = conn.execute('SELECT * FROM models ORDER BY created_at DESC').fetchall()
+    conn.close()
+    models = [dict(r) for r in rows]
     grouped = {key: [] for key in MODEL_CATEGORIES.keys()}
     for m in models:
-        grouped.setdefault(m['category'], []).append(m)
+        grouped.setdefault(m.get('category'), []).append(m)
     return render_template(
         'model.html',
         model_groups=grouped,
         category_labels=MODEL_CATEGORIES
     )
 
+@app.route('/model/<int:model_id>')
+@login_required
+def model_detail(model_id):
+    """模型详情路由，展示关键配置与奖励曲线"""
+    sync_models_from_fs()
+    conn = get_db_connection()
+    model_row = conn.execute(
+        'SELECT * FROM models WHERE id = ?', (model_id,)
+    ).fetchone()
+    conn.close()
+    if not model_row:
+        flash('模型不存在或已被移除', 'error')
+        return redirect(url_for('model'))
+
+    config_data = {}
+    algo_config = {}
+    model_config = {}
+    reward_image = None
+    try:
+        config_path = get_abs_path(model_row['config_path'])
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config_data = json.load(f)
+        algo_config = config_data.get('algo_args', {}).get('algo', {})
+        model_config = config_data.get('algo_args', {}).get('model', {})
+        reward_path = os.path.join(os.path.dirname(config_path), 'reward.png')
+        reward_abs = get_abs_path(reward_path)
+        if os.path.exists(reward_abs):
+            reward_image = url_for('model_reward_image', model_id=model_id)
+    except Exception as e:
+        flash(f'读取模型配置失败：{str(e)}', 'error')
+
+    return render_template(
+        'model_detail.html',
+        model=model_row,
+        algo_config=algo_config,
+        model_config=model_config,
+        reward_image=reward_image
+    )
+
+@app.route('/model/<int:model_id>/reward')
+@login_required
+def model_reward_image(model_id):
+    """提供奖励曲线图"""
+    conn = get_db_connection()
+    model_row = conn.execute(
+        'SELECT * FROM models WHERE id = ?', (model_id,)
+    ).fetchone()
+    conn.close()
+    if not model_row:
+        return 'Not Found', 404
+    try:
+        config_path = get_abs_path(model_row['config_path'])
+        reward_path = os.path.join(os.path.dirname(config_path), 'reward.png')
+        reward_abs = get_abs_path(reward_path)
+        if not os.path.exists(reward_abs):
+            return 'Not Found', 404
+        return send_file(reward_abs, mimetype='image/png')
+    except Exception:
+        return 'Forbidden', 403
+
 @app.route('/api/models', methods=['GET'])
 @login_required
 def api_models():
     """获取模型列表"""
-    models = sync_models_from_fs()
+    sync_models_from_fs()
+    conn = get_db_connection()
+    rows = conn.execute('SELECT * FROM models ORDER BY created_at DESC').fetchall()
+    conn.close()
+    models = [dict(r) for r in rows]
     return jsonify({'success': True, 'models': models})
 
 @app.route('/simulation')

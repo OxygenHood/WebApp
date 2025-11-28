@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block title %}模型详情 - 无人集群指控系统{% endblock %}
+
+{% block page_title %}模型详情{% endblock %}
+
+{% block content %}
+<div class="page-container">
+    <div class="content-card">
+        <div class="detail-header">
+            <div>
+                <p class="breadcrumb"><a href="{{ url_for('model') }}">模型管理</a> / 详情</p>
+                <h2>{{ model['name'] }}</h2>
+                <p class="sub-info">类别：{{ model['category'] }} · 算法：{{ model['algo'] or '未标注' }} · 场景：{{ model['scenario'] or '未标注' }}</p>
+            </div>
+            <a class="btn btn-secondary" href="{{ url_for('model') }}"><i class="fas fa-arrow-left"></i> 返回列表</a>
+        </div>
+
+        <div class="grid-2">
+            <div class="card-block">
+                <h3><i class="fas fa-cogs"></i> 关键算法参数 (algo_args.algo)</h3>
+                <div class="kv-list">
+                    {% for key in ['action_aggregation','clip_param','ppo_epoch','entropy_coef','gae_lambda','gamma','max_grad_norm','use_gae','use_policy_active_masks','value_loss_coef','fixed_order','share_param','use_clipped_value_loss','use_huber_loss'] %}
+                        {% if key in algo_config %}
+                            <div class="kv-row">
+                                <span class="kv-key">{{ key }}</span>
+                                <span class="kv-value">{{ algo_config[key] }}</span>
+                            </div>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="card-block">
+                <h3><i class="fas fa-microchip"></i> 模型结构参数 (algo_args.model)</h3>
+                <div class="kv-list">
+                    {% for key in ['hidden_sizes','activation_func','lr','critic_lr','weight_decay','use_recurrent_policy','use_naive_recurrent_policy','use_feature_normalization','data_chunk_length','recurrent_n','std_x_coef','std_y_coef','initialization_method'] %}
+                        {% if key in model_config %}
+                            <div class="kv-row">
+                                <span class="kv-key">{{ key }}</span>
+                                <span class="kv-value">{{ model_config[key] }}</span>
+                            </div>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <div class="card-block reward-block">
+            <div class="reward-header">
+                <div>
+                    <h3><i class="fas fa-chart-line"></i> 训练奖励曲线</h3>
+                    <p class="sub-info">奖励反映策略在强化学习中的累积回报。随着训练迭代，曲线应整体上升或趋于稳定，代表策略改进或收敛。</p>
+                    <p class="sub-info">典型奖励函数：对有效命中/分配给予正奖励，对资源浪费、冲突或超时给予惩罚；在多目标场景下可加入任务完成度、协同效率等项。</p>
+                </div>
+            </div>
+            {% if reward_image %}
+                <div class="reward-img">
+                    <img src="{{ reward_image }}" alt="奖励曲线">
+                </div>
+            {% else %}
+                <div class="empty-state">
+                    <i class="fas fa-image"></i>
+                    <p>未找到奖励曲线图片（reward.png）</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<style>
+.detail-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+.breadcrumb {
+    margin: 0;
+    color: #6b7280;
+    font-size: 0.95rem;
+}
+.breadcrumb a { color: #2563eb; text-decoration: none; }
+.sub-info { color: #6b7280; margin: 0.25rem 0; }
+.grid-2 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 1rem;
+    margin: 1rem 0;
+}
+.card-block {
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 1rem;
+}
+.kv-list { display: grid; gap: 0.35rem; }
+.kv-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.4rem 0.6rem;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+}
+.kv-key { font-weight: 600; color: #111827; }
+.kv-value { color: #374151; text-align: right; }
+.reward-block { margin-top: 1.5rem; }
+.reward-header { margin-bottom: 0.5rem; }
+.reward-img {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 0.5rem;
+    text-align: center;
+}
+.reward-img img { max-width: 100%; border-radius: 6px; }
+.empty-state {
+    border: 1px dashed #d1d5db;
+    border-radius: 8px;
+    padding: 1rem;
+    text-align: center;
+    color: #6b7280;
+    background: #fff;
+}
+@media (max-width: 768px) {
+    .detail-header { flex-direction: column; align-items: flex-start; gap: 0.75rem; }
+}
+</style>
+{% endblock %}
