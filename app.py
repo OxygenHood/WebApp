@@ -12,6 +12,154 @@ app.secret_key = 'your-secret-key-here-change-in-production'  # 用于会话管�
 # 应用版本信息
 APP_VERSION = 'V 1.0.0'
 
+# 模型目录及分类定义
+MODEL_ROOT = 'models'
+MODEL_CATEGORIES = {
+    'target_allocation': '目标分配',
+    'fire_allocaltion': '火力分配'  # 保持与现有目录一致
+}
+
+# 确保模型表存在
+def ensure_models_table():
+    conn = get_db_connection()
+    conn.execute(
+        '''CREATE TABLE IF NOT EXISTS models (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            category TEXT NOT NULL,
+            seed INTEGER,
+            version TEXT,
+            algo TEXT,
+            env TEXT,
+            scenario TEXT,
+            config_path TEXT UNIQUE,
+            progress_path TEXT,
+            status TEXT DEFAULT 'available',
+            best_score REAL,
+            last_step INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )'''
+    )
+    conn.commit()
+    conn.close()
+
+# 解析进度文件，获取最新步数与最佳成绩
+def parse_progress(progress_path):
+    last_step = None
+    best_score = None
+    if not os.path.exists(progress_path):
+        return last_step, best_score
+    try:
+        with open(progress_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                parts = line.strip().split(',')
+                if len(parts) < 2:
+                    continue
+                try:
+                    step = int(float(parts[0]))
+                    score = float(parts[1])
+                except ValueError:
+                    continue
+                last_step = step
+                if best_score is None or score > best_score:
+                    best_score = score
+    except Exception:
+        return None, None
+    return last_step, best_score
+
+# 从目录名中提取种子和时间戳
+def parse_folder_metadata(folder_name):
+    # 期望格式: seed-00014-2024-09-25-21-19-35
+    parts = folder_name.split('-')
+    seed = None
+    timestamp = folder_name
+    if len(parts) >= 2 and parts[0] == 'seed':
+        try:
+            seed = int(parts[1])
+        except ValueError:
+            seed = None
+    if len(parts) >= 8:
+        timestamp = f"{parts[2]}-{parts[3]}-{parts[4]} {parts[5]}:{parts[6]}:{parts[7]}"
+    return seed, timestamp
+
+# 从文件系统收集模型信息
+def collect_models_from_fs():
+    models = []
+    if not os.path.isdir(MODEL_ROOT):
+        return models
+    for category, category_label in MODEL_CATEGORIES.items():
+        category_path = os.path.join(MODEL_ROOT, category)
+        if not os.path.isdir(category_path):
+            continue
+        for entry in os.listdir(category_path):
+            model_path = os.path.join(category_path, entry)
+            if not os.path.isdir(model_path):
+                continue
+            config_path = os.path.join(model_path, 'config.json')
+            progress_path = os.path.join(model_path, 'progress.txt')
+            if not os.path.exists(config_path):
+                continue
+            try:
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config_data = json.load(f)
+            except Exception:
+                config_data = {}
+            seed, version = parse_folder_metadata(entry)
+            algo = config_data.get('main_args', {}).get('algo')
+            env = config_data.get('main_args', {}).get('env')
+            scenario = config_data.get('env_args', {}).get('scenario')
+            name = config_data.get('main_args', {}).get('exp_name') or entry
+            last_step, best_score = parse_progress(progress_path)
+            models.append({
+                'name': name,
+                'category': category,
+                'category_label': category_label,
+                'seed': seed,
+                'version': version,
+                'algo': algo,
+                'env': env,
+                'scenario': scenario,
+                'config_path': config_path,
+                'progress_path': progress_path if os.path.exists(progress_path) else '',
+                'status': '可用',
+                'best_score': best_score,
+                'last_step': last_step
+            })
+    return models
+
+# 同步文件系统模型数据到数据库，并返回最新列表
+def sync_models_from_fs():
+    ensure_models_table()
+    fs_models = collect_models_from_fs()
+    if not fs_models:
+        return []
+    conn = get_db_connection()
+    for m in fs_models:
+        conn.execute(
+            '''INSERT INTO models (name, category, seed, version, algo, env, scenario, config_path, progress_path, status, best_score, last_step)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(config_path) DO UPDATE SET
+                   name=excluded.name,
+                   category=excluded.category,
+                   seed=excluded.seed,
+                   version=excluded.version,
+                   algo=excluded.algo,
+                   env=excluded.env,
+                   scenario=excluded.scenario,
+                   progress_path=excluded.progress_path,
+                   status=excluded.status,
+                   best_score=excluded.best_score,
+                   last_step=excluded.last_step''',
+            (
+                m['name'], m['category'], m['seed'], m['version'], m['algo'], m['env'],
+                m['scenario'], m['config_path'], m['progress_path'], m['status'],
+                m['best_score'], m['last_step']
+            )
+        )
+    conn.commit()
+    conn.close()
+    return fs_models
+
 # 添加自定义 Jinja2 过滤器
 @app.template_filter('from_json')
 def from_json_filter(value):
@@ -28,6 +176,9 @@ def get_db_connection():
     conn = sqlite3.connect('webapp.db')
     conn.row_factory = sqlite3.Row  # 使行可以通过列名访问
     return conn
+
+# 初始化一次模型表
+ensure_models_table()
 
 def login_required(f):
     """登录装饰器"""
@@ -75,6 +226,8 @@ def logout():
 def index():
     """首页路由"""
     try:
+        # 同步模型数据，确保统计准确
+        sync_models_from_fs()
         conn = get_db_connection()
         
         # 查询场景总数
@@ -129,7 +282,22 @@ def pipeline():
 @login_required
 def model():
     """模型管理路由"""
-    return render_template('model.html')
+    models = sync_models_from_fs()
+    grouped = {key: [] for key in MODEL_CATEGORIES.keys()}
+    for m in models:
+        grouped.setdefault(m['category'], []).append(m)
+    return render_template(
+        'model.html',
+        model_groups=grouped,
+        category_labels=MODEL_CATEGORIES
+    )
+
+@app.route('/api/models', methods=['GET'])
+@login_required
+def api_models():
+    """获取模型列表"""
+    models = sync_models_from_fs()
+    return jsonify({'success': True, 'models': models})
 
 @app.route('/simulation')
 @login_required

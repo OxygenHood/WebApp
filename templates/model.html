@@ -8,13 +8,254 @@
 <div class="page-container">
     <div class="content-card">
         <h2>模型管理系统</h2>
-        <p>这里是模型管理功能页面，您可以在此管理机器学习模型的训练、部署和版本控制。</p>
-        
-        <div class="placeholder-content">
-            <i class="fas fa-cube fa-3x"></i>
-            <h3>功能开发中</h3>
-            <p>模型管理功能正在开发中，敬请期待...</p>
+        <p>当前模型仓库包含目标分配与火力分配两类模型，列表数据直接读取 <code>models</code> 目录下的配置与训练进度文件。</p>
+
+        <div class="model-summary">
+            <div class="summary-item">
+                <span class="summary-label">目标分配模型</span>
+                <span class="summary-value">{{ (model_groups.get('target_allocation') or []) | length }}</span>
+            </div>
+            <div class="summary-item">
+                <span class="summary-label">火力分配模型</span>
+                <span class="summary-value">{{ (model_groups.get('fire_allocaltion') or []) | length }}</span>
+            </div>
+            <div class="summary-item">
+                <span class="summary-label">总计</span>
+                <span class="summary-value">
+                    {{ ((model_groups.get('target_allocation') or []) | length) + ((model_groups.get('fire_allocaltion') or []) | length) }}
+                </span>
+            </div>
         </div>
+
+        {% for category, label in category_labels.items() %}
+            <div class="model-section">
+                <div class="section-header">
+                    <div>
+                        <span class="section-title">{{ label }}</span>
+                        <small class="section-hint">{{ category }}</small>
+                    </div>
+                    <div class="section-count">{{ (model_groups.get(category) or []) | length }} 个模型</div>
+                </div>
+
+                {% set models = model_groups.get(category) or [] %}
+                {% if models %}
+                    <div class="model-grid">
+                        {% for model in models %}
+                            <div class="model-card">
+                                <div class="model-card-header">
+                                    <div>
+                                        <h4>{{ model.name }}</h4>
+                                        <div class="model-meta">
+                                            <span><i class="fas fa-robot"></i> 算法：{{ model.algo or '未知' }}</span>
+                                            <span><i class="fas fa-globe-asia"></i> 环境：{{ model.env or '未标注' }}</span>
+                                            <span><i class="fas fa-layer-group"></i> 场景：{{ model.scenario or '未标注' }}</span>
+                                        </div>
+                                    </div>
+                                    <span class="badge">{{ label }}</span>
+                                </div>
+
+                                <div class="model-details">
+                                    <div class="detail-row">
+                                        <div class="detail-label">版本</div>
+                                        <div class="detail-value">{{ model.version }}</div>
+                                    </div>
+                                    <div class="detail-row">
+                                        <div class="detail-label">种子</div>
+                                        <div class="detail-value">{{ model.seed or '—' }}</div>
+                                    </div>
+                                    <div class="detail-row">
+                                        <div class="detail-label">训练进度</div>
+                                        <div class="detail-value">
+                                            {% if model.last_step %}
+                                                {{ model.last_step }} steps
+                                            {% else %}
+                                                未记录
+                                            {% endif %}
+                                            {% if model.best_score is not none %}
+                                                · 最佳指标 {{ '%.3f'|format(model.best_score) }}
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    <div class="detail-row">
+                                        <div class="detail-label">状态</div>
+                                        <div class="detail-value status-pill">{{ model.status }}</div>
+                                    </div>
+                                </div>
+
+                                <div class="path-block">
+                                    <div class="path-label"><i class="fas fa-file-code"></i> 配置</div>
+                                    <div class="path-value"><code>{{ model.config_path }}</code></div>
+                                </div>
+                                {% if model.progress_path %}
+                                <div class="path-block">
+                                    <div class="path-label"><i class="fas fa-chart-line"></i> 进度</div>
+                                    <div class="path-value"><code>{{ model.progress_path }}</code></div>
+                                </div>
+                                {% endif %}
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="empty-state">
+                        <i class="fas fa-folder-open fa-2x"></i>
+                        <p>暂无{{ label }}模型</p>
+                        <p class="empty-hint">请在 <code>models/{{ category }}</code> 下放置包含 config.json 的模型目录</p>
+                    </div>
+                {% endif %}
+            </div>
+        {% endfor %}
     </div>
 </div>
+
+<style>
+.model-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+    margin: 1.5rem 0;
+}
+.summary-item {
+    background: #f5f8ff;
+    border: 1px solid #e0e7ff;
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.summary-label {
+    color: #334155;
+    font-weight: 600;
+}
+.summary-value {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #1d4ed8;
+}
+.model-section {
+    margin-top: 2rem;
+}
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 1rem;
+}
+.section-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #111827;
+}
+.section-hint {
+    color: #6b7280;
+    margin-left: 0.5rem;
+}
+.section-count {
+    color: #475569;
+    font-weight: 600;
+}
+.model-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 1rem;
+}
+.model-card {
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 1rem;
+    background: #fff;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+}
+.model-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0.75rem;
+}
+.model-card h4 {
+    margin: 0 0 0.35rem 0;
+    color: #111827;
+}
+.badge {
+    background: #eef2ff;
+    color: #4338ca;
+    padding: 0.25rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.model-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 0.75rem;
+    color: #6b7280;
+    font-size: 0.95rem;
+}
+.model-details {
+    margin: 0.75rem 0;
+    border-top: 1px solid #f1f5f9;
+    padding-top: 0.75rem;
+}
+.detail-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.35rem 0;
+    color: #334155;
+}
+.detail-label {
+    font-weight: 600;
+    color: #475569;
+}
+.detail-value {
+    text-align: right;
+}
+.status-pill {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    background: #ecfdf3;
+    color: #16a34a;
+    border-radius: 999px;
+    font-weight: 600;
+}
+.path-block {
+    margin-top: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: #f8fafc;
+    border: 1px dashed #e2e8f0;
+    border-radius: 6px;
+}
+.path-label {
+    font-weight: 600;
+    color: #334155;
+    margin-bottom: 0.25rem;
+}
+.path-value code {
+    white-space: nowrap;
+    overflow-x: auto;
+    display: block;
+}
+.empty-state {
+    border: 1px dashed #d1d5db;
+    border-radius: 8px;
+    padding: 1.25rem;
+    text-align: center;
+    color: #6b7280;
+    background: #f9fafb;
+}
+.empty-hint {
+    margin: 0.25rem 0 0;
+    font-size: 0.95rem;
+    color: #9ca3af;
+}
+@media (max-width: 768px) {
+    .model-grid {
+        grid-template-columns: 1fr;
+    }
+    .model-meta {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
+</style>
 {% endblock %}
