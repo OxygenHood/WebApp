@@ -19,6 +19,19 @@ MODEL_CATEGORIES = {
     'fire_allocaltion': '火力分配'  # 保持与现有目录一致
 }
 
+def normalize_config_path(path):
+    """规范化模型相关路径，避免因不同运行环境导致的重复记录"""
+    if not path:
+        return ''
+    abs_root = os.path.abspath(MODEL_ROOT)
+    abs_path = os.path.abspath(path)
+    try:
+        rel = os.path.relpath(abs_path, abs_root)
+        normalized = os.path.join(MODEL_ROOT, rel)
+    except ValueError:
+        normalized = abs_path
+    return normalized.replace('\\', '/')
+
 def get_abs_path(path):
     """构造绝对路径并校验在模型根目录内"""
     abs_root = os.path.abspath(MODEL_ROOT)
@@ -55,21 +68,30 @@ def ensure_models_table():
     conn.close()
 
 def deduplicate_models(conn):
-    """删除 config_path 重复的记录，保留最小 id"""
+    """删除 config_path 重复的记录，保留最小 id，并规范化路径"""
     try:
-        duplicates = conn.execute(
-            '''SELECT MIN(id) AS keep_id, config_path
-               FROM models
-               GROUP BY config_path
-               HAVING COUNT(*) > 1'''
-        ).fetchall()
-        for row in duplicates:
-            keep_id = row['keep_id']
-            cfg = row['config_path']
-            conn.execute(
-                'DELETE FROM models WHERE config_path = ? AND id != ?',
-                (cfg, keep_id)
-            )
+        rows = conn.execute('SELECT id, config_path FROM models').fetchall()
+        keep_for_path = {}
+        delete_ids = []
+        for row in rows:
+            normalized = normalize_config_path(row['config_path'])
+            if normalized != row['config_path']:
+                conn.execute(
+                    'UPDATE models SET config_path = ? WHERE id = ?',
+                    (normalized, row['id'])
+                )
+            if normalized not in keep_for_path:
+                keep_for_path[normalized] = row['id']
+                continue
+            # 保留较小 id 的记录
+            if row['id'] < keep_for_path[normalized]:
+                delete_ids.append(keep_for_path[normalized])
+                keep_for_path[normalized] = row['id']
+            else:
+                delete_ids.append(row['id'])
+        if delete_ids:
+            placeholders = ','.join('?' for _ in delete_ids)
+            conn.execute(f'DELETE FROM models WHERE id IN ({placeholders})', delete_ids)
     except Exception:
         pass
 
@@ -125,8 +147,8 @@ def collect_models_from_fs():
             model_path = os.path.join(category_path, entry)
             if not os.path.isdir(model_path):
                 continue
-            config_path = os.path.join(model_path, 'config.json')
-            progress_path = os.path.join(model_path, 'progress.txt')
+            config_path = normalize_config_path(os.path.join(model_path, 'config.json'))
+            progress_path = normalize_config_path(os.path.join(model_path, 'progress.txt'))
             if not os.path.exists(config_path):
                 continue
             try:
