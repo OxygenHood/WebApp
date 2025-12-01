@@ -25,6 +25,29 @@
                 </select>
                 <button class="btn btn-info btn-sm" id="loadScenario">加载场景</button>
             </div>
+
+            <div class="model-select-block">
+                <div class="model-select-header">
+                    <span><i class="fas fa-robot"></i> 模型选择</span>
+                    <span class="required-flag">仿真必选：目标分配 + 火力分配</span>
+                </div>
+                <div class="model-select-grid">
+                    <div class="model-select-item">
+                        <label>目标分配模型：</label>
+                        <select id="targetModelSelect" class="model-select">
+                            <option value="">正在加载...</option>
+                        </select>
+                        <div class="model-chip" id="targetModelStatus">未选择</div>
+                    </div>
+                    <div class="model-select-item">
+                        <label>火力分配模型：</label>
+                        <select id="fireModelSelect" class="model-select">
+                            <option value="">正在加载...</option>
+                        </select>
+                        <div class="model-chip" id="fireModelStatus">未选择</div>
+                    </div>
+                </div>
+            </div>
             
             <div class="control-group">
                 <label>当前场景：</label>
@@ -162,6 +185,83 @@
     color: #212529;
 }
 
+.control-panel .btn:disabled,
+.control-panel .btn.disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+    box-shadow: none;
+}
+
+.model-select-block {
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 12px;
+}
+
+.model-select-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.required-flag {
+    font-size: 12px;
+    color: #d97706;
+    background: #fef3c7;
+    border: 1px solid #fcd34d;
+    padding: 3px 8px;
+    border-radius: 999px;
+}
+
+.model-select-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+}
+
+.model-select-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.model-select {
+    padding: 8px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+.model-select:disabled {
+    background: #f3f4f6;
+    cursor: not-allowed;
+}
+
+.model-chip {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: #f3f4f6;
+    color: #6b7280;
+    font-size: 12px;
+    border: 1px dashed #e5e7eb;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.model-chip.active {
+    background: #eef2ff;
+    color: #4338ca;
+    border-color: #c7d2fe;
+}
+
 @keyframes pulse {
     0% { opacity: 1; }
     50% { opacity: 0.7; }
@@ -182,6 +282,10 @@ let enemyMarkers = [];
 let isSimulationRunning = false;
 let isPaused = false;
 let currentScenarioData = null;
+let targetModels = [];
+let fireModels = [];
+let selectedTargetModel = null;
+let selectedFireModel = null;
 let simulationInterval = null;
 let simulationSpeed = 1000; // 仿真更新间隔(毫秒)
 
@@ -312,6 +416,94 @@ function loadScenarios() {
         .catch(error => {
             saveLog('获取场景列表时发生错误: ' + error.message, 'ERROR');
         });
+}
+
+// 加载模型列表
+function loadModels() {
+    fetch('/api/models')
+        .then(response => response.json())
+        .then(data => {
+            if (!data.success) {
+                saveLog('加载模型列表失败: ' + data.message, 'ERROR');
+                return;
+            }
+            targetModels = data.models.filter(model => model.category === 'target_allocation');
+            fireModels = data.models.filter(model => model.category === 'fire_allocaltion');
+            populateModelSelect('targetModelSelect', targetModels, '请选择目标分配模型...');
+            populateModelSelect('fireModelSelect', fireModels, '请选择火力分配模型...');
+            updateModelSelectionDisplay();
+            updateStartButtonState();
+            saveLog(`加载模型列表成功：目标分配 ${targetModels.length} 个，火力分配 ${fireModels.length} 个`);
+        })
+        .catch(error => {
+            saveLog('获取模型列表时发生错误: ' + error.message, 'ERROR');
+        });
+}
+
+// 填充模型下拉框
+function populateModelSelect(selectId, models, placeholder) {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+
+    select.innerHTML = '';
+    const defaultOption = document.createElement('option');
+    defaultOption.value = '';
+    defaultOption.textContent = models.length ? placeholder : '暂无可用模型';
+    select.appendChild(defaultOption);
+
+    models.forEach(model => {
+        const option = document.createElement('option');
+        option.value = model.id;
+        option.textContent = `${model.name}${model.version ? ' · ' + model.version : ''}`;
+        select.appendChild(option);
+    });
+
+    select.disabled = models.length === 0;
+}
+
+// 更新模型选择状态展示
+function updateModelSelectionDisplay() {
+    const targetStatus = document.getElementById('targetModelStatus');
+    const fireStatus = document.getElementById('fireModelStatus');
+
+    if (targetStatus) {
+        if (selectedTargetModel) {
+            targetStatus.textContent = `${selectedTargetModel.name}${selectedTargetModel.version ? ' · ' + selectedTargetModel.version : ''}`;
+            targetStatus.classList.add('active');
+        } else {
+            targetStatus.textContent = '未选择';
+            targetStatus.classList.remove('active');
+        }
+    }
+
+    if (fireStatus) {
+        if (selectedFireModel) {
+            fireStatus.textContent = `${selectedFireModel.name}${selectedFireModel.version ? ' · ' + selectedFireModel.version : ''}`;
+            fireStatus.classList.add('active');
+        } else {
+            fireStatus.textContent = '未选择';
+            fireStatus.classList.remove('active');
+        }
+    }
+}
+
+// 检查仿真是否可以启动
+function isSimulationReady() {
+    return Boolean(currentScenarioData && selectedTargetModel && selectedFireModel);
+}
+
+function updateStartButtonState() {
+    const startBtn = document.getElementById('startSim');
+    if (!startBtn) return;
+    const canStart = isSimulationReady() || isSimulationRunning;
+    startBtn.disabled = !canStart;
+    if (startBtn.disabled) {
+        startBtn.classList.add('disabled');
+        startBtn.title = '请选择场景，并选择目标分配/火力分配模型后再开始';
+    } else {
+        startBtn.classList.remove('disabled');
+        startBtn.title = '';
+    }
 }
 
 // 清除地图上的所有标记
@@ -631,6 +823,7 @@ function loadScenarioToMap(scenarioId) {
                 // 更新计数显示
                 document.getElementById('droneCount').textContent = ourDroneCount;
                 document.getElementById('enemyCount').textContent = enemyUnitCount;
+                updateStartButtonState();
                 
                 // 自动调整地图视野以包含所有标记
                 if (droneMarkers.length > 0 || enemyMarkers.length > 0) {
@@ -653,8 +846,8 @@ function loadScenarioToMap(scenarioId) {
 
 // 仿真控制功能
 function startSimulation() {
-    if (!currentScenarioData) {
-        alert('请先选择并加载场景');
+    if (!isSimulationRunning && !isSimulationReady()) {
+        alert('请先选择并加载场景，并选择目标分配与火力分配模型');
         return;
     }
     
@@ -674,7 +867,9 @@ function startSimulation() {
         document.getElementById('simStatus').className = 'status-badge running';
         document.getElementById('startSim').innerHTML = '<i class="fas fa-pause"></i> 暂停';
         
-        saveLog(`开始仿真，当前场景: ${currentScenarioData.name}`);
+        const targetName = selectedTargetModel ? selectedTargetModel.name : '未选择';
+        const fireName = selectedFireModel ? selectedFireModel.name : '未选择';
+        saveLog(`开始仿真，当前场景: ${currentScenarioData.name}，目标分配模型: ${targetName}，火力分配模型: ${fireName}`);
     } else if (isPaused) {
         // 继续仿真
         isPaused = false;
@@ -729,6 +924,7 @@ function stopSimulation() {
     document.getElementById('simStatus').textContent = '就绪';
     document.getElementById('simStatus').className = 'status-badge';
     document.getElementById('startSim').innerHTML = '<i class="fas fa-play"></i> 开始仿真';
+    updateStartButtonState();
     
     saveLog('仿真停止，单位位置已重置');
 }
@@ -740,6 +936,8 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // 加载场景列表
     loadScenarios();
+    // 加载模型列表
+    loadModels();
     
     // 绑定按钮事件
     document.getElementById('startSim').addEventListener('click', startSimulation);
@@ -755,7 +953,23 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
+    // 绑定模型选择事件
+    document.getElementById('targetModelSelect').addEventListener('change', function() {
+        const modelId = parseInt(this.value, 10);
+        selectedTargetModel = targetModels.find(model => model.id === modelId) || null;
+        updateModelSelectionDisplay();
+        updateStartButtonState();
+    });
+
+    document.getElementById('fireModelSelect').addEventListener('change', function() {
+        const modelId = parseInt(this.value, 10);
+        selectedFireModel = fireModels.find(model => model.id === modelId) || null;
+        updateModelSelectionDisplay();
+        updateStartButtonState();
+    });
+    
     saveLog('仿真评估页面初始化完成');
+    updateStartButtonState();
 });
 </script>
 

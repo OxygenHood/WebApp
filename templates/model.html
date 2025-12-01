@@ -89,6 +89,9 @@
                                     <a class="btn btn-primary" href="{{ url_for('model_reward_image', model_id=model.id) }}" target="_blank">
                                         <i class="fas fa-chart-line"></i> 奖励曲线
                                     </a>
+                                    <button type="button" class="btn btn-outline rename-btn" data-id="{{ model.id }}" data-name="{{ model.name }}">
+                                        <i class="fas fa-edit"></i> 修改名称
+                                    </button>
                                 </div>
                             </div>
                         {% endfor %}
@@ -101,9 +104,50 @@
                     </div>
                 {% endif %}
             </div>
-        {% endfor %}
+{% endfor %}
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.rename-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            const modelId = this.dataset.id;
+            const currentName = this.dataset.name || '';
+            const newName = prompt('请输入新的模型名称：', currentName);
+            if (newName === null) {
+                return; // 用户取消
+            }
+            const trimmedName = newName.trim();
+            if (!trimmedName) {
+                alert('名称不能为空');
+                return;
+            }
+
+            fetch(`/api/model/${modelId}/rename`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: trimmedName })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    const card = btn.closest('.model-card');
+                    const titleEl = card ? card.querySelector('h4') : null;
+                    if (titleEl) titleEl.textContent = trimmedName;
+                    btn.dataset.name = trimmedName;
+                    alert('模型名称已更新');
+                } else {
+                    alert('更新失败：' + (data.message || '未知错误'));
+                }
+            })
+            .catch(err => {
+                alert('请求失败：' + err.message);
+            });
+        });
+    });
+});
+</script>
 
 <style>
 .model-summary {

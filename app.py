@@ -419,6 +419,31 @@ def api_models():
     models = [dict(r) for r in rows]
     return jsonify({'success': True, 'models': models})
 
+@app.route('/api/model/<int:model_id>/rename', methods=['POST'])
+@login_required
+def api_rename_model(model_id):
+    """修改模型名称"""
+    try:
+        data = request.get_json() or {}
+        new_name = (data.get('name') or '').strip()
+        if not new_name:
+            return jsonify({'success': False, 'message': '名称不能为空'}), 400
+
+        conn = get_db_connection()
+        result = conn.execute(
+            'UPDATE models SET name = ? WHERE id = ?',
+            (new_name, model_id)
+        )
+        conn.commit()
+        conn.close()
+
+        if result.rowcount == 0:
+            return jsonify({'success': False, 'message': '模型不存在'}), 404
+
+        return jsonify({'success': True, 'message': '模型名称已更新', 'name': new_name})
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'更新失败: {str(e)}'}), 500
+
 @app.route('/simulation')
 @login_required
 def simulation():
