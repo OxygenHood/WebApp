@@ -12,6 +12,19 @@ app.secret_key = 'your-secret-key-here-change-in-production'  # 用于会话管�
 # 应用版本信息
 APP_VERSION = 'V 1.0.0'
 
+# 注册 from_json 过滤器，兼容模板中解析 JSON 字符串
+def _from_json_filter(value):
+    if value is None:
+        return {}
+    if isinstance(value, (dict, list)):
+        return value
+    try:
+        return json.loads(value)
+    except Exception:
+        return {}
+
+app.jinja_env.filters['from_json'] = _from_json_filter
+
 # 模型目录及分类定义
 MODEL_ROOT = 'models'
 MODEL_CATEGORIES = {
@@ -491,7 +504,9 @@ def create_scenario():
                     'lng': drone['lng'],
                     'altitude': drone['altitude'],
                     'radar': drone.get('radar', 0),
-                    'hq9b': drone.get('hq9b', 0)
+                    'hq9b': drone.get('hq9b', 0),
+                    'pl10': drone.get('pl10', 0),
+                    'cannon': drone.get('cannon', 0)
                 }
                 drone_details.append(drone_info)
                 our_drone_positions.append(f"{drone['lat']},{drone['lng']},{drone['altitude']}")
@@ -501,11 +516,15 @@ def create_scenario():
             # 统计总载荷数量（用于兼容性）
             total_radar = sum(drone.get('radar', 0) for drone in our_drones)
             total_hq9b = sum(drone.get('hq9b', 0) for drone in our_drones)
+            total_pl10 = sum(drone.get('pl10', 0) for drone in our_drones)
+            total_cannon = sum(drone.get('cannon', 0) for drone in our_drones)
             
             # 保存详细配置，包含每架无人机的具体载荷
             our_drone_payloads = json.dumps({
                 'total_radar': total_radar,
                 'total_hq9b': total_hq9b,
+                'total_pl10': total_pl10,
+                'total_cannon': total_cannon,
                 'drones': drone_details  # 每架无人机的详细配置
             })
             
@@ -620,7 +639,9 @@ def edit_scenario(scenario_id):
                     'lng': drone['lng'],
                     'altitude': drone['altitude'],
                     'radar': drone.get('radar', 0),
-                    'hq9b': drone.get('hq9b', 0)
+                    'hq9b': drone.get('hq9b', 0),
+                    'pl10': drone.get('pl10', 0),
+                    'cannon': drone.get('cannon', 0)
                 }
                 drone_details.append(drone_info)
                 our_drone_positions.append(f"{drone['lat']},{drone['lng']},{drone['altitude']}")
@@ -630,11 +651,15 @@ def edit_scenario(scenario_id):
             # 统计总载荷数量（用于兼容性）
             total_radar = sum(drone.get('radar', 0) for drone in our_drones)
             total_hq9b = sum(drone.get('hq9b', 0) for drone in our_drones)
+            total_pl10 = sum(drone.get('pl10', 0) for drone in our_drones)
+            total_cannon = sum(drone.get('cannon', 0) for drone in our_drones)
             
             # 保存详细配置，包含每架无人机的具体载荷
             our_drone_payloads = json.dumps({
                 'total_radar': total_radar,
                 'total_hq9b': total_hq9b,
+                'total_pl10': total_pl10,
+                'total_cannon': total_cannon,
                 'drones': drone_details  # 每架无人机的详细配置
             })
             
@@ -855,6 +880,16 @@ def get_scenario_detail(scenario_id):
             except:
                 pass
         
+        # 填充缺失的载荷字段以兼容旧数据
+        for drone in our_drones:
+            drone.setdefault('radar', 0)
+            drone.setdefault('hq9b', 0)
+            drone.setdefault('pl10', 0)
+            drone.setdefault('cannon', 0)
+            drone.setdefault('altitude', drone.get('altitude', 100))
+            drone.setdefault('lat', drone.get('lat'))
+            drone.setdefault('lng', drone.get('lng'))
+        
         # 如果没有详细数据，使用位置数据
         if not our_drones and scenario['our_drone_positions']:
             positions = scenario['our_drone_positions'].split('\n')
@@ -869,7 +904,9 @@ def get_scenario_detail(scenario_id):
                             'lng': coords[1],
                             'altitude': int(coords[2]) if len(coords) > 2 else 100,
                             'radar': 0,
-                            'hq9b': 0
+                            'hq9b': 0,
+                            'pl10': 0,
+                            'cannon': 0
                         })
         
         # 解析敌方单位数据（优先使用详细数据）

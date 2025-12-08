@@ -518,7 +518,10 @@ const unitTypeNames = {
 };
 
 // 初始化现有数据
-{% set payloads = scenario.our_drone_payloads | from_json if scenario.our_drone_payloads else {} %}
+{% set payloads = {} %}
+{% if scenario.our_drone_payloads %}
+    {% set payloads = scenario.our_drone_payloads | from_json %}
+{% endif %}
 {% if payloads.drones %}
     // 使用新的详细数据格式
     ourDrones = {{ payloads.drones | tojson }};
@@ -549,6 +552,15 @@ const unitTypeNames = {
         droneCounter = ourDrones.length + 1;
     {% endif %}
 {% endif %}
+
+// 兼容旧数据：填充缺失的载荷字段
+ourDrones = ourDrones.map(drone => ({
+    ...drone,
+    radar: drone.radar || 0,
+    hq9b: drone.hq9b || 0,
+    pl10: drone.pl10 || 0,
+    cannon: drone.cannon || 0
+}));
 
 // 初始化敌方单位数据
 enemyUnits = [];
@@ -712,7 +724,9 @@ function addOurDrone() {
         lng: '',
         altitude: 100,
         radar: 0,
-        hq9b: 0
+        hq9b: 0,
+        pl10: 0,
+        cannon: 0
     };
     ourDrones.push(drone);
     updateOurDronesList();
@@ -768,6 +782,16 @@ function updateOurDronesList() {
                             <input type="number" class="unit-input" value="${drone.hq9b || 0}" min="0" max="10" 
                                    onchange="updateDroneField(${drone.id}, 'hq9b', this.value)">
                         </div>
+                        <div class="detail-group">
+                            <label>PL-10数量:</label>
+                            <input type="number" class="unit-input" value="${drone.pl10 || 0}" min="0" max="10" 
+                                   onchange="updateDroneField(${drone.id}, 'pl10', this.value)">
+                        </div>
+                        <div class="detail-group">
+                            <label>机炮数量:</label>
+                            <input type="number" class="unit-input" value="${drone.cannon || 0}" min="0" max="10" 
+                                   onchange="updateDroneField(${drone.id}, 'cannon', this.value)">
+                        </div>
                     </div>
                 </div>
             </div>
@@ -781,7 +805,7 @@ function updateOurDronesList() {
 function updateDroneField(droneId, field, value) {
     const drone = ourDrones.find(d => d.id === droneId);
     if (drone) {
-        if (field === 'altitude' || field === 'radar' || field === 'hq9b') {
+        if (field === 'altitude' || field === 'radar' || field === 'hq9b' || field === 'pl10' || field === 'cannon') {
             drone[field] = parseInt(value) || 0;
         } else {
             drone[field] = value;

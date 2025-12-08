@@ -594,6 +594,48 @@ function calculateDistance(lat1, lng1, lat2, lng2) {
     return R * c;
 }
 
+function setMarkerTooltip(marker, content) {
+    const existingTooltip = marker.getTooltip ? marker.getTooltip() : null;
+    if (existingTooltip) {
+        if (marker.setTooltipContent) {
+            marker.setTooltipContent(content);
+        } else if (existingTooltip.setContent) {
+            existingTooltip.setContent(content);
+        }
+    } else {
+        marker.bindTooltip(content, {
+            direction: 'top',
+            opacity: 0.9,
+            offset: [0, -4]
+        });
+    }
+}
+
+function formatTargetLabel(targetMarker) {
+    if (!targetMarker) {
+        return '未分配';
+    }
+    const unitData = targetMarker.unitData || {};
+    return unitData.code || '未设置';
+}
+
+function updateDroneTooltip(unit) {
+    const label = formatTargetLabel(unit.targetMarker);
+    const codeLabel = unit.data && unit.data.code ? unit.data.code : '未设置';
+    const content = `编号：${codeLabel}<br/>当前攻击目标：${label}`;
+    setMarkerTooltip(unit.marker, content);
+    unit.marker.currentTarget = unit.targetMarker;
+}
+
+// 为我方无人机随机挑选一个敌方目标
+function pickRandomEnemyTarget() {
+    if (!enemyMarkers.length) {
+        return null;
+    }
+    const randomIndex = Math.floor(Math.random() * enemyMarkers.length);
+    return enemyMarkers[randomIndex];
+}
+
 // 初始化单位运动数据
 function initializeMovementData() {
     unitMovementData.ourDrones = [];
@@ -602,15 +644,20 @@ function initializeMovementData() {
     // 初始化我方无人机运动数据
     droneMarkers.forEach((marker, index) => {
         const currentPos = marker.getLatLng();
-        const target = generateRandomTarget(currentPos.lat, currentPos.lng, 0.2);
+        const targetMarker = pickRandomEnemyTarget();
+        const target = targetMarker ? targetMarker.getLatLng() : generateRandomTarget(currentPos.lat, currentPos.lng, 0.2);
         
         unitMovementData.ourDrones.push({
             marker: marker,
             currentPos: currentPos,
             targetPos: target,
+            targetMarker: targetMarker,
             speed: UNIT_SPEEDS.our_drone,
-            data: currentScenarioData.our_drones[index] || {}
+            data: currentScenarioData.our_drones[index] || {},
+            isOur: true
         });
+        marker.currentTarget = targetMarker;
+        updateDroneTooltip(unitMovementData.ourDrones[unitMovementData.ourDrones.length - 1]);
     });
     
     // 初始化敌方单位运动数据
@@ -632,7 +679,8 @@ function initializeMovementData() {
             targetPos: target,
             speed: UNIT_SPEEDS[unitType] || 100,
             type: unitType,
-            data: unitData
+            data: unitData,
+            isOur: false
         });
     });
     
@@ -647,6 +695,10 @@ function updateUnitPositions() {
     
     // 更新我方无人机位置
     unitMovementData.ourDrones.forEach(unit => {
+        // 我方无人机始终追踪目标标记的实时位置
+        if (unit.targetMarker) {
+            unit.targetPos = unit.targetMarker.getLatLng();
+        }
         moveUnitTowardsTarget(unit, updateInterval);
     });
     
@@ -668,7 +720,19 @@ function moveUnitTowardsTarget(unit, timeStep) {
     
     // 如果已经接近目标，生成新目标
     if (distanceToTarget < 0.01) {
-        unit.targetPos = generateRandomTarget(currentPos.lat, currentPos.lng, 0.2);
+        if (unit.isOur) {
+            // 我方无人机到达后重新随机分配新的敌方目标
+            const newTargetMarker = pickRandomEnemyTarget();
+            unit.targetMarker = newTargetMarker;
+            if (newTargetMarker) {
+                unit.targetPos = newTargetMarker.getLatLng();
+            } else {
+                unit.targetPos = generateRandomTarget(currentPos.lat, currentPos.lng, 0.2);
+            }
+            updateDroneTooltip(unit);
+        } else {
+            unit.targetPos = generateRandomTarget(currentPos.lat, currentPos.lng, 0.2);
+        }
         return;
     }
     
@@ -737,10 +801,16 @@ function loadScenarioToMap(scenarioId) {
                                 icon: getMarkerIcon('our_drone', 'our') 
                             }).addTo(map);
                             
+                            // 悬停提示：显示无人机编号及当前攻击目标
+                            const droneCodeLabel = drone.code || '未设置';
+                            const initialTargetLabel = formatTargetLabel(null);
+                            setMarkerTooltip(marker, `编号：${droneCodeLabel}<br/>当前攻击目标：${initialTargetLabel}`);
+                            
                             // 绑定动态弹出窗口 - 使用 this 指向标记本身
                             marker.bindPopup(function() {
                                 const currentPos = this.getLatLng();
                                 const droneData = this.droneData;
+                                const targetLabel = formatTargetLabel(this.currentTarget);
                                 return `
                                     <div style="min-width: 200px;">
                                         <h4 style="margin: 0 0 8px 0; color: #2c3e50;">我方无人机</h4>
@@ -751,7 +821,10 @@ function loadScenarioToMap(scenarioId) {
                                             <strong>高度：</strong>${droneData.altitude || 100}米
                                         </p>
                                         <p style="margin: 0 0 6px 0; color: #7f8c8d; font-size: 0.9rem;">
-                                            <strong>载荷：</strong>雷达${droneData.radar || 0}个, HQ9B${droneData.hq9b || 0}个
+                                            <strong>载荷：</strong>雷达${droneData.radar || 0}个, HQ9B${droneData.hq9b || 0}个, PL-10${droneData.pl10 || 0}个, 机炮${droneData.cannon || 0}门
+                                        </p>
+                                        <p style="margin: 0 0 6px 0; color: #7f8c8d; font-size: 0.9rem;">
+                                            <strong>攻击目标：</strong>${targetLabel}
                                         </p>
                                         <p style="margin: 0; color: #007bff; font-size: 0.8rem; font-family: monospace;">
                                             <strong>坐标：</strong>${currentPos.lat.toFixed(4)}°N, ${currentPos.lng.toFixed(4)}°E
@@ -781,6 +854,10 @@ function loadScenarioToMap(scenarioId) {
                             const marker = L.marker([lat, lng], { 
                                 icon: getMarkerIcon(unit.type, 'enemy') 
                             }).addTo(map);
+                            
+                            // 悬停提示：显示敌方编号
+                            const unitCodeLabel = unit.code || '未设置';
+                            setMarkerTooltip(marker, `编号：${unitCodeLabel}`);
                             
                             const typeNames = {
                                 'reconnaissance_drone': '侦察无人机',
