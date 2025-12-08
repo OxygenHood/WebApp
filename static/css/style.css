@@ -17,6 +17,21 @@ body {
     min-height: 100vh;
 }
 
+.sidebar-resizer {
+    width: 6px;
+    cursor: col-resize;
+    background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.05) 50%, rgba(0,0,0,0) 100%);
+    transition: background-color 0.2s ease;
+}
+
+.sidebar-resizer:hover {
+    background-color: rgba(0, 0, 0, 0.08);
+}
+
+.sidebar.collapsed + .sidebar-resizer {
+    display: none;
+}
+
 /* 侧边导航栏 */
 .sidebar {
     width: 250px;

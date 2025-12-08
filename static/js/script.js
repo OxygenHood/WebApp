@@ -3,11 +3,23 @@ document.addEventListener('DOMContentLoaded', function() {
     // 获取导航栏和切换按钮
     const sidebar = document.getElementById('sidebar');
     const toggleBtn = document.getElementById('toggleBtn');
+    const resizer = document.getElementById('sidebarResizer');
+    const defaultSidebarWidth = 250;
+    const collapsedWidth = 70;
+    const minSidebarWidth = 180;
+    const maxSidebarWidth = 420;
     
     // 检查本地存储中的导航栏状态
     const sidebarState = localStorage.getItem('sidebarCollapsed');
     if (sidebarState === 'true') {
         sidebar.classList.add('collapsed');
+        sidebar.style.width = `${collapsedWidth}px`;
+    }
+    const savedWidth = localStorage.getItem('sidebarWidth');
+    if (savedWidth && !sidebar.classList.contains('collapsed')) {
+        sidebar.style.width = `${Math.min(Math.max(parseInt(savedWidth, 10), minSidebarWidth), maxSidebarWidth)}px`;
+    } else if (!sidebar.classList.contains('collapsed')) {
+        sidebar.style.width = `${defaultSidebarWidth}px`;
     }
     
     // 切换导航栏收缩状态
@@ -20,7 +32,46 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // 添加动画效果
         sidebar.style.transition = 'width 0.3s ease';
+        if (isCollapsed) {
+            sidebar.style.width = `${collapsedWidth}px`;
+        } else {
+            const widthToSet = savedWidth ? parseInt(savedWidth, 10) : defaultSidebarWidth;
+            sidebar.style.width = `${Math.min(Math.max(widthToSet, minSidebarWidth), maxSidebarWidth)}px`;
+        }
     });
+
+    // 侧边栏拖拽缩放
+    if (resizer) {
+        let isDragging = false;
+        const startDrag = (e) => {
+            if (sidebar.classList.contains('collapsed')) {
+                sidebar.classList.remove('collapsed');
+                localStorage.setItem('sidebarCollapsed', false);
+            }
+            isDragging = true;
+            document.body.style.userSelect = 'none';
+            document.body.style.cursor = 'col-resize';
+        };
+        const onDrag = (e) => {
+            if (!isDragging) return;
+            const newWidth = Math.min(Math.max(e.clientX, minSidebarWidth), maxSidebarWidth);
+            sidebar.style.width = `${newWidth}px`;
+        };
+        const endDrag = () => {
+            if (!isDragging) return;
+            isDragging = false;
+            document.body.style.userSelect = '';
+            document.body.style.cursor = '';
+            const finalWidth = parseInt(sidebar.getBoundingClientRect().width, 10);
+            localStorage.setItem('sidebarWidth', finalWidth);
+        };
+        resizer.addEventListener('mousedown', startDrag);
+        resizer.addEventListener('touchstart', (e) => startDrag(e.touches[0]));
+        window.addEventListener('mousemove', onDrag);
+        window.addEventListener('touchmove', (e) => onDrag(e.touches[0]));
+        window.addEventListener('mouseup', endDrag);
+        window.addEventListener('touchend', endDrag);
+    }
     
     // 导航链接点击效果
     const navLinks = document.querySelectorAll('.nav-link');
