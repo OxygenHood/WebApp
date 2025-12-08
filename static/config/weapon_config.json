@@ -1,0 +1,58 @@
+{
+  "weapons": [
+    {
+      "code": "radar",
+      "name": "机载雷达",
+      "type": "sensor",
+      "max_range_km": 200,
+      "description": "用于目标搜索与火控引导，仿真中仅作为占位"
+    },
+    {
+      "code": "hq9b",
+      "name": "HQ-9B 防空导弹",
+      "type": "sam",
+      "max_range_km": 200,
+      "min_range_km": 5,
+      "hit_probability": 0.75,
+      "single_shot_lethality": 0.9,
+      "reaction_time_s": 8,
+      "speed_mach": 4.2,
+      "ceiling_m": 25000,
+      "guidance": "主动雷达/半主动",
+      "notes": "远程防空打击，高空高速目标命中率较高，近距灵敏度下降"
+    },
+    {
+      "code": "pl10",
+      "name": "PL-10 近距空空导弹",
+      "type": "aam",
+      "max_range_km": 20,
+      "min_range_km": 0.5,
+      "hit_probability": 0.65,
+      "single_shot_lethality": 0.85,
+      "reaction_time_s": 3,
+      "speed_mach": 2.5,
+      "ceiling_m": 20000,
+      "guidance": "红外成像",
+      "notes": "机动性强，适合近距格斗；对高速侧向目标命中率略降"
+    },
+    {
+      "code": "cannon",
+      "name": "机炮",
+      "type": "gun",
+      "max_range_km": 2,
+      "min_range_km": 0.1,
+      "hit_probability": 0.35,
+      "single_shot_lethality": 0.6,
+      "rate_of_fire_rpm": 4500,
+      "reaction_time_s": 1,
+      "notes": "近距火力压制，命中率受射控与姿态影响大，持续射击累积伤害"
+    }
+  ],
+  "defaults": {
+    "engagement_policy": {
+      "max_concurrent_targets": 2,
+      "max_salvo_per_target": 2,
+      "reengage_on_miss": true
+    }
+  }
+}

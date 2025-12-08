@@ -262,6 +262,12 @@
     border-color: #c7d2fe;
 }
 
+.target-highlight {
+    box-shadow: 0 0 0 4px rgba(255, 82, 82, 0.35), 0 0 12px rgba(255, 82, 82, 0.6);
+    transform: scale(1.08);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
 @keyframes pulse {
     0% { opacity: 1; }
     50% { opacity: 0.7; }
@@ -288,6 +294,9 @@ let selectedTargetModel = null;
 let selectedFireModel = null;
 let simulationInterval = null;
 let simulationSpeed = 1000; // 仿真更新间隔(毫秒)
+let activeHighlightLine = null;
+let activeHighlightedTarget = null;
+let activeHighlightedDrone = null;
 
 // 单位运动数据
 let unitMovementData = {
@@ -520,6 +529,7 @@ function clearMapMarkers() {
     });
     enemyMarkers = [];
     
+    clearTargetHighlight();
     saveLog('清除地图上的所有标记');
 }
 
@@ -619,12 +629,59 @@ function formatTargetLabel(targetMarker) {
     return unitData.code || '未设置';
 }
 
+function formatPayloadSummary(droneData = {}) {
+    const radar = droneData.radar || 0;
+    const hq9b = droneData.hq9b || 0;
+    const pl10 = droneData.pl10 || 0;
+    const cannon = droneData.cannon || 0;
+    return `载荷：雷达:${radar} HQ9B:${hq9b} PL-10:${pl10} 机炮:${cannon}`;
+}
+
 function updateDroneTooltip(unit) {
     const label = formatTargetLabel(unit.targetMarker);
     const codeLabel = unit.data && unit.data.code ? unit.data.code : '未设置';
-    const content = `编号：${codeLabel}<br/>当前攻击目标：${label}`;
+    const payload = formatPayloadSummary(unit.data || {});
+    const content = `编号：${codeLabel}<br/>${payload}<br/>当前攻击目标：${label}`;
     setMarkerTooltip(unit.marker, content);
     unit.marker.currentTarget = unit.targetMarker;
+}
+
+function clearTargetHighlight() {
+    if (activeHighlightLine) {
+        map.removeLayer(activeHighlightLine);
+        activeHighlightLine = null;
+    }
+    if (activeHighlightedTarget && activeHighlightedTarget._icon) {
+        activeHighlightedTarget._icon.classList.remove('target-highlight');
+    }
+    activeHighlightedTarget = null;
+    activeHighlightedDrone = null;
+}
+
+function highlightTargetForDrone(droneMarker) {
+    const unit = unitMovementData.ourDrones.find(u => u.marker === droneMarker);
+    const targetMarker = (unit && unit.targetMarker) || droneMarker.currentTarget;
+    // 如果当前就是选中的无人机，切换为取消高亮
+    if (activeHighlightedDrone === droneMarker) {
+        clearTargetHighlight();
+        return;
+    }
+
+    clearTargetHighlight();
+    if (!targetMarker) {
+        return;
+    }
+    activeHighlightedTarget = targetMarker;
+    activeHighlightedDrone = droneMarker;
+    if (targetMarker._icon) {
+        targetMarker._icon.classList.add('target-highlight');
+    }
+    activeHighlightLine = L.polyline(
+        [droneMarker.getLatLng(), targetMarker.getLatLng()],
+        { color: '#ff5252', weight: 3, dashArray: '8,4', opacity: 0.8 }
+    ).addTo(map);
+    if (targetMarker.bringToFront) targetMarker.bringToFront();
+    if (droneMarker.bringToFront) droneMarker.bringToFront();
 }
 
 // 为我方无人机随机挑选一个敌方目标
@@ -706,6 +763,14 @@ function updateUnitPositions() {
     unitMovementData.enemyUnits.forEach(unit => {
         moveUnitTowardsTarget(unit, updateInterval);
     });
+
+    // 如果有高亮连线，刷新位置
+    if (activeHighlightLine && activeHighlightedDrone && activeHighlightedTarget) {
+        activeHighlightLine.setLatLngs([
+            activeHighlightedDrone.getLatLng(),
+            activeHighlightedTarget.getLatLng()
+        ]);
+    }
 }
 
 // 移动单位朝向目标
@@ -796,20 +861,24 @@ function loadScenarioToMap(scenarioId) {
                         const lat = parseFloat(drone.lat);
                         const lng = parseFloat(drone.lng);
                         
-                        if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
-                            const marker = L.marker([lat, lng], { 
-                                icon: getMarkerIcon('our_drone', 'our') 
-                            }).addTo(map);
-                            
-                            // 悬停提示：显示无人机编号及当前攻击目标
-                            const droneCodeLabel = drone.code || '未设置';
-                            const initialTargetLabel = formatTargetLabel(null);
-                            setMarkerTooltip(marker, `编号：${droneCodeLabel}<br/>当前攻击目标：${initialTargetLabel}`);
-                            
-                            // 绑定动态弹出窗口 - 使用 this 指向标记本身
-                            marker.bindPopup(function() {
-                                const currentPos = this.getLatLng();
-                                const droneData = this.droneData;
+        if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+            const marker = L.marker([lat, lng], { 
+                icon: getMarkerIcon('our_drone', 'our') 
+            }).addTo(map);
+            
+            // 悬停提示：显示无人机编号及当前攻击目标
+            const droneCodeLabel = drone.code || '未设置';
+            const initialTargetLabel = formatTargetLabel(null);
+            const payload = formatPayloadSummary(drone);
+            setMarkerTooltip(marker, `编号：${droneCodeLabel}<br/>${payload}<br/>当前攻击目标：${initialTargetLabel}`);
+
+            // 点击高亮当前目标并连线
+            marker.on('click', () => highlightTargetForDrone(marker));
+            
+            // 绑定动态弹出窗口 - 使用 this 指向标记本身
+            marker.bindPopup(function() {
+                const currentPos = this.getLatLng();
+                const droneData = this.droneData;
                                 const targetLabel = formatTargetLabel(this.currentTarget);
                                 return `
                                     <div style="min-width: 200px;">

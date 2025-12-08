@@ -1,0 +1,71 @@
+{
+  "units": [
+    {
+      "type": "reconnaissance_drone",
+      "name": "侦察无人机",
+      "value": 30,
+      "speed_kmh": 120,
+      "altitude_m": 5000,
+      "signature": "low",
+      "weapons": [],
+      "notes": "主要用于侦察，不具备攻击能力，易被拦截"
+    },
+    {
+      "type": "attack_helicopter",
+      "name": "武装直升机",
+      "value": 60,
+      "speed_kmh": 240,
+      "altitude_m": 3000,
+      "signature": "medium",
+      "weapons": [
+        { "code": "a2g_missile", "name": "空地导弹", "count": 8, "max_range_km": 8, "hit_probability": 0.55 },
+        { "code": "rocket_pod", "name": "火箭巢", "count": 14, "max_range_km": 3, "hit_probability": 0.35 },
+        { "code": "gun", "name": "机炮", "count": 1, "max_range_km": 1.5, "hit_probability": 0.3 }
+      ],
+      "notes": "可对地/对海轻装目标实施打击，对高速空中目标效果有限"
+    },
+    {
+      "type": "tank",
+      "name": "坦克",
+      "value": 80,
+      "speed_kmh": 50,
+      "signature": "high",
+      "weapons": [
+        { "code": "apfsds", "name": "主炮穿甲弹", "count": 30, "max_range_km": 3, "hit_probability": 0.6 },
+        { "code": "coax_gun", "name": "并列机枪", "count": 2000, "max_range_km": 1, "hit_probability": 0.25 }
+      ],
+      "notes": "对地打击力强，机动慢，易被空中精确打击摧毁"
+    },
+    {
+      "type": "armored_vehicle",
+      "name": "装甲车",
+      "value": 50,
+      "speed_kmh": 80,
+      "signature": "medium",
+      "weapons": [
+        { "code": "atgm", "name": "反坦克导弹", "count": 4, "max_range_km": 5, "hit_probability": 0.5 },
+        { "code": "hmg", "name": "重机枪", "count": 1000, "max_range_km": 1, "hit_probability": 0.2 }
+      ],
+      "notes": "高机动，中等火力，可对装甲与低空目标提供有限威胁"
+    },
+    {
+      "type": "military_base",
+      "name": "军事基地",
+      "value": 120,
+      "speed_kmh": 0,
+      "signature": "very_high",
+      "weapons": [
+        { "code": "sam_site", "name": "近程防空导弹阵地", "count": 12, "max_range_km": 15, "hit_probability": 0.45 },
+        { "code": "aaa", "name": "高炮/机炮阵地", "count": 4, "max_range_km": 3, "hit_probability": 0.25 }
+      ],
+      "notes": "固定高价值目标，防空火力覆盖基地周边，机动性为零"
+    }
+  ],
+  "defaults": {
+    "engagement_policy": {
+      "max_concurrent_targets": 1,
+      "max_salvo_per_target": 1,
+      "reengage_on_miss": true
+    }
+  }
+}
