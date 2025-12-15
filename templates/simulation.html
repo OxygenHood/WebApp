@@ -297,6 +297,11 @@ let simulationSpeed = 1000; // 仿真更新间隔(毫秒)
 let activeHighlightLine = null;
 let activeHighlightedTarget = null;
 let activeHighlightedDrone = null;
+let enemyUnitValueMap = {};
+let maxEnemyUnitValue = 120;
+let targetAssignmentCounts = {};
+let weaponConfigMap = {};
+const FIRE_COOLDOWN_MS = 3000;
 
 // 单位运动数据
 let unitMovementData = {
@@ -346,6 +351,51 @@ function saveLog(message, level = 'INFO') {
     .catch(error => {
         console.error('发送日志请求失败:', error);
     });
+}
+
+// 加载敌方单位价值配置
+function loadEnemyConfig() {
+    fetch('/static/config/enemy_unit_config.json')
+        .then(response => response.json())
+        .then(data => {
+            enemyUnitValueMap = {};
+            maxEnemyUnitValue = 1;
+            if (data && Array.isArray(data.units)) {
+                data.units.forEach(unit => {
+                    if (unit.type) {
+                        enemyUnitValueMap[unit.type] = unit.value || 50;
+                        maxEnemyUnitValue = Math.max(maxEnemyUnitValue, unit.value || 50);
+                    }
+                });
+            }
+            saveLog('敌方单位配置加载完成');
+        })
+        .catch(error => {
+            saveLog('敌方单位配置加载失败：' + error.message, 'ERROR');
+            enemyUnitValueMap = {};
+            maxEnemyUnitValue = 120;
+        });
+}
+
+// 加载武器配置
+function loadWeaponConfig() {
+    fetch('/static/config/weapon_config.json')
+        .then(response => response.json())
+        .then(data => {
+            weaponConfigMap = {};
+            if (data && Array.isArray(data.weapons)) {
+                data.weapons.forEach(weapon => {
+                    if (weapon.code) {
+                        weaponConfigMap[weapon.code] = weapon;
+                    }
+                });
+            }
+            saveLog('武器配置加载完成');
+        })
+        .catch(error => {
+            saveLog('武器配置加载失败：' + error.message, 'ERROR');
+            weaponConfigMap = {};
+        });
 }
 
 // 初始化地图
@@ -684,37 +734,205 @@ function highlightTargetForDrone(droneMarker) {
     if (droneMarker.bringToFront) droneMarker.bringToFront();
 }
 
-// 为我方无人机随机挑选一个敌方目标
-function pickRandomEnemyTarget() {
+const TARGET_SELECTION_WEIGHTS = {
+    value: 0.5,
+    distance: 0.35,
+    load: 0.15
+};
+
+function getTargetKey(marker) {
+    if (!marker) return null;
+    if (marker.unitIndex !== undefined) return marker.unitIndex;
+    return marker._leaflet_id || null;
+}
+
+function incrementTargetAssignment(marker) {
+    const key = getTargetKey(marker);
+    if (key === null) return;
+    targetAssignmentCounts[key] = (targetAssignmentCounts[key] || 0) + 1;
+}
+
+function decrementTargetAssignment(marker) {
+    const key = getTargetKey(marker);
+    if (key === null) return;
+    if (targetAssignmentCounts[key]) {
+        targetAssignmentCounts[key] = Math.max(0, targetAssignmentCounts[key] - 1);
+    }
+}
+
+function getEnemyValue(marker) {
+    const unitType = marker && marker.unitData ? marker.unitData.type : null;
+    if (unitType && enemyUnitValueMap[unitType]) {
+        return enemyUnitValueMap[unitType];
+    }
+    if (marker && marker.unitData && marker.unitData.value) {
+        return marker.unitData.value;
+    }
+    return 50;
+}
+
+function getWeaponFromDrone(droneData, code) {
+    if (!droneData) return null;
+    const count = parseInt(droneData[code], 10);
+    if (isNaN(count) || count <= 0) return null;
+    const cfg = weaponConfigMap[code];
+    if (!cfg) return null;
+    return {
+        code,
+        count,
+        config: cfg
+    };
+}
+
+function chooseWeaponForTarget(droneUnit, targetMarker, distanceKm) {
+    if (!droneUnit || !targetMarker) return null;
+    const droneData = droneUnit.data || {};
+    const candidates = ['hq9b', 'pl10', 'cannon']
+        .map(code => getWeaponFromDrone(droneData, code))
+        .filter(Boolean);
+    let best = null;
+    candidates.forEach(w => {
+        const cfg = w.config;
+        const minRange = cfg.min_range_km || 0;
+        const maxRange = cfg.max_range_km || 0;
+        if (maxRange <= 0) return;
+        if (distanceKm < minRange || distanceKm > maxRange) return;
+        const score = cfg.hit_probability || 0;
+        if (!best || score > best.score) {
+            best = {
+                code: w.code,
+                config: cfg,
+                score,
+                maxRange
+            };
+        }
+    });
+    return best;
+}
+
+function applyWeaponConsumption(droneUnit, weaponCode) {
+    if (!droneUnit || !droneUnit.data) return;
+    const current = parseInt(droneUnit.data[weaponCode], 10);
+    if (!isNaN(current) && current > 0) {
+        droneUnit.data[weaponCode] = current - 1;
+    }
+}
+
+function handleTargetDestroyed(targetMarker) {
+    if (!targetMarker || targetMarker.isDestroyed) return;
+    targetMarker.isDestroyed = true;
+    decrementTargetAssignment(targetMarker);
+    if (activeHighlightedTarget === targetMarker) {
+        clearTargetHighlight();
+    }
+    // 从地图和列表中移除
+    map.removeLayer(targetMarker);
+    enemyMarkers = enemyMarkers.filter(m => m !== targetMarker);
+    unitMovementData.enemyUnits = unitMovementData.enemyUnits.filter(u => u.marker !== targetMarker);
+    saveLog(`目标被击毁：${formatTargetLabel(targetMarker)}`);
+    // 让所有针对该目标的无人机重新分配
+    unitMovementData.ourDrones.forEach(unit => {
+        if (unit.targetMarker === targetMarker) {
+            unit.targetMarker = pickRandomEnemyTarget(unit);
+            if (unit.targetMarker) {
+                incrementTargetAssignment(unit.targetMarker);
+                unit.targetPos = unit.targetMarker.getLatLng();
+            } else {
+                unit.targetPos = generateRandomTarget(unit.currentPos.lat, unit.currentPos.lng, 0.2);
+            }
+            updateDroneTooltip(unit);
+        }
+    });
+    // 更新计数显示
+    document.getElementById('enemyCount').textContent = enemyMarkers.length;
+}
+
+function attemptEngagement(unit) {
+    if (!unit || !unit.isOur) return;
+    if (!unit.targetMarker || unit.targetMarker.isDestroyed) return;
+    const now = Date.now();
+    if (unit.lastFireTime && now - unit.lastFireTime < FIRE_COOLDOWN_MS) {
+        return;
+    }
+    const targetPos = unit.targetMarker.getLatLng();
+    const dist = calculateDistance(unit.currentPos.lat, unit.currentPos.lng, targetPos.lat, targetPos.lng);
+    const weapon = chooseWeaponForTarget(unit, unit.targetMarker, dist);
+    if (!weapon) return;
+    unit.lastFireTime = now;
+    applyWeaponConsumption(unit, weapon.code);
+    const hitProbability = weapon.config.hit_probability || 0.5;
+    const lethality = weapon.config.single_shot_lethality || 0.8;
+    const roll = Math.random();
+    const killRoll = Math.random();
+    const hit = roll <= hitProbability;
+    const destroyed = hit && killRoll <= lethality;
+    saveLog(`无人机(${unit.data.code || '未编号'}) 使用 ${weapon.config.name} 攻击 ${formatTargetLabel(unit.targetMarker)}，距离 ${dist.toFixed(2)}km，命中掷骰=${roll.toFixed(2)}，毁伤掷骰=${killRoll.toFixed(2)}，结果：${destroyed ? '击毁' : (hit ? '命中未毁' : '未命中')}`);
+    if (destroyed) {
+        handleTargetDestroyed(unit.targetMarker);
+    } else if (!enemyMarkers.length) {
+        unit.targetMarker = null;
+    }
+}
+
+// 根据距离、价值与当前分配负载综合挑选最优敌方目标
+function pickRandomEnemyTarget(droneUnit = null) {
     if (!enemyMarkers.length) {
         return null;
     }
-    const randomIndex = Math.floor(Math.random() * enemyMarkers.length);
-    return enemyMarkers[randomIndex];
+    const currentPos = droneUnit ? (droneUnit.currentPos || droneUnit.marker.getLatLng()) : null;
+    let bestMarker = null;
+    let bestScore = -Infinity;
+    enemyMarkers.forEach(marker => {
+        const targetPos = marker.getLatLng();
+        const distanceKm = currentPos ? calculateDistance(
+            currentPos.lat, currentPos.lng,
+            targetPos.lat, targetPos.lng
+        ) : 0;
+        const valueScore = getEnemyValue(marker) / maxEnemyUnitValue;
+        const distanceScore = 1 / (1 + distanceKm); // 越近越高
+        const load = targetAssignmentCounts[getTargetKey(marker)] || 0;
+        const loadScore = 1 / (1 + load);
+        const score = TARGET_SELECTION_WEIGHTS.value * valueScore +
+                      TARGET_SELECTION_WEIGHTS.distance * distanceScore +
+                      TARGET_SELECTION_WEIGHTS.load * loadScore;
+        if (score > bestScore) {
+            bestScore = score;
+            bestMarker = marker;
+        }
+    });
+    return bestMarker;
 }
 
 // 初始化单位运动数据
 function initializeMovementData() {
     unitMovementData.ourDrones = [];
     unitMovementData.enemyUnits = [];
+    targetAssignmentCounts = {};
     
     // 初始化我方无人机运动数据
     droneMarkers.forEach((marker, index) => {
         const currentPos = marker.getLatLng();
-        const targetMarker = pickRandomEnemyTarget();
-        const target = targetMarker ? targetMarker.getLatLng() : generateRandomTarget(currentPos.lat, currentPos.lng, 0.2);
-        
-        unitMovementData.ourDrones.push({
+        const unitData = currentScenarioData.our_drones[index] || {};
+        const unit = {
             marker: marker,
             currentPos: currentPos,
-            targetPos: target,
-            targetMarker: targetMarker,
+            targetPos: null,
+            targetMarker: null,
             speed: UNIT_SPEEDS.our_drone,
-            data: currentScenarioData.our_drones[index] || {},
-            isOur: true
-        });
+            data: unitData,
+            isOur: true,
+            lastFireTime: 0
+        };
+        const targetMarker = pickRandomEnemyTarget(unit);
+        unit.targetMarker = targetMarker;
+        unit.targetPos = targetMarker ? targetMarker.getLatLng() : generateRandomTarget(currentPos.lat, currentPos.lng, 0.2);
+        
+        unitMovementData.ourDrones.push(unit);
+        if (targetMarker) {
+            incrementTargetAssignment(targetMarker);
+        }
         marker.currentTarget = targetMarker;
-        updateDroneTooltip(unitMovementData.ourDrones[unitMovementData.ourDrones.length - 1]);
+        updateDroneTooltip(unit);
     });
     
     // 初始化敌方单位运动数据
@@ -753,10 +971,21 @@ function updateUnitPositions() {
     // 更新我方无人机位置
     unitMovementData.ourDrones.forEach(unit => {
         // 我方无人机始终追踪目标标记的实时位置
-        if (unit.targetMarker) {
+        if (unit.targetMarker && !unit.targetMarker.isDestroyed) {
             unit.targetPos = unit.targetMarker.getLatLng();
+        } else if (unit.targetMarker && unit.targetMarker.isDestroyed) {
+            // 已被摧毁则换目标
+            unit.targetMarker = pickRandomEnemyTarget(unit);
+            if (unit.targetMarker) {
+                incrementTargetAssignment(unit.targetMarker);
+                unit.targetPos = unit.targetMarker.getLatLng();
+            } else {
+                unit.targetPos = generateRandomTarget(unit.currentPos.lat, unit.currentPos.lng, 0.2);
+            }
+            updateDroneTooltip(unit);
         }
         moveUnitTowardsTarget(unit, updateInterval);
+        attemptEngagement(unit);
     });
     
     // 更新敌方单位位置
@@ -787,10 +1016,12 @@ function moveUnitTowardsTarget(unit, timeStep) {
     if (distanceToTarget < 0.01) {
         if (unit.isOur) {
             // 我方无人机到达后重新随机分配新的敌方目标
-            const newTargetMarker = pickRandomEnemyTarget();
+            decrementTargetAssignment(unit.targetMarker);
+            const newTargetMarker = pickRandomEnemyTarget(unit);
             unit.targetMarker = newTargetMarker;
             if (newTargetMarker) {
                 unit.targetPos = newTargetMarker.getLatLng();
+                incrementTargetAssignment(newTargetMarker);
             } else {
                 unit.targetPos = generateRandomTarget(currentPos.lat, currentPos.lng, 0.2);
             }
@@ -1079,6 +1310,8 @@ function stopSimulation() {
 document.addEventListener('DOMContentLoaded', function() {
     // 初始化地图
     initMap();
+    loadEnemyConfig();
+    loadWeaponConfig();
     
     // 加载场景列表
     loadScenarios();
