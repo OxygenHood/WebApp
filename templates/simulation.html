@@ -315,6 +315,19 @@
     transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
+.unit-destroying {
+    animation: explodeFade 0.8s forwards;
+    transform-origin: center;
+    filter: drop-shadow(0 0 12px rgba(239, 68, 68, 0.8));
+}
+
+@keyframes explodeFade {
+    0% { transform: scale(1); opacity: 1; }
+    30% { transform: scale(1.4); opacity: 0.9; }
+    60% { transform: scale(1.1); opacity: 0.5; }
+    100% { transform: scale(0.6); opacity: 0; }
+}
+
 .distance-tooltip {
     background: #111827;
     color: #fff;
@@ -493,6 +506,7 @@ let targetAssignmentCounts = {};
 let weaponConfigMap = {};
 const FIRE_COOLDOWN_MS = 3000;
 const MESSAGE_DURATION_MS = 2000;
+const DESTRUCTION_ANIMATION_MS = 800;
 
 let battleStats = {
     shotsFired: 0,
@@ -1256,27 +1270,35 @@ function handleTargetDestroyed(targetMarker) {
     if (activeHighlightedTarget === targetMarker) {
         clearTargetHighlight();
     }
-    // 从地图和列表中移除
-    map.removeLayer(targetMarker);
-    enemyMarkers = enemyMarkers.filter(m => m !== targetMarker);
-    unitMovementData.enemyUnits = unitMovementData.enemyUnits.filter(u => u.marker !== targetMarker);
-    saveLog(`目标被击毁：${formatTargetLabel(targetMarker)}`);
-    // 让所有针对该目标的无人机重新分配
-    unitMovementData.ourDrones.forEach(unit => {
-        if (unit.targetMarker === targetMarker) {
-            unit.targetMarker = pickRandomEnemyTarget(unit);
-            if (unit.targetMarker) {
-                incrementTargetAssignment(unit.targetMarker);
-                unit.targetPos = unit.targetMarker.getLatLng();
-            } else {
-                unit.targetPos = generateRandomTarget(unit.currentPos.lat, unit.currentPos.lng, 0.2);
+    const cleanupRemoval = () => {
+        map.removeLayer(targetMarker);
+        enemyMarkers = enemyMarkers.filter(m => m !== targetMarker);
+        unitMovementData.enemyUnits = unitMovementData.enemyUnits.filter(u => u.marker !== targetMarker);
+        saveLog(`目标被击毁：${formatTargetLabel(targetMarker)}`);
+        // 让所有针对该目标的无人机重新分配
+        unitMovementData.ourDrones.forEach(unit => {
+            if (unit.targetMarker === targetMarker) {
+                unit.targetMarker = pickRandomEnemyTarget(unit);
+                if (unit.targetMarker) {
+                    incrementTargetAssignment(unit.targetMarker);
+                    unit.targetPos = unit.targetMarker.getLatLng();
+                } else {
+                    unit.targetPos = generateRandomTarget(unit.currentPos.lat, unit.currentPos.lng, 0.2);
+                }
+                updateDroneTooltip(unit);
             }
-            updateDroneTooltip(unit);
-        }
-    });
-    // 更新计数显示
-    document.getElementById('enemyCount').textContent = enemyMarkers.length;
-    checkSimulationEnd();
+        });
+        // 更新计数显示
+        document.getElementById('enemyCount').textContent = enemyMarkers.length;
+        checkSimulationEnd();
+    };
+    const icon = targetMarker._icon;
+    if (icon) {
+        icon.classList.add('unit-destroying');
+        setTimeout(cleanupRemoval, DESTRUCTION_ANIMATION_MS);
+    } else {
+        cleanupRemoval();
+    }
 }
 
 function attemptEngagement(unit) {
