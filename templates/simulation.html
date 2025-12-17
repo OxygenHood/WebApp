@@ -315,6 +315,16 @@
     transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
+.distance-tooltip {
+    background: #111827;
+    color: #fff;
+    border: 1px solid #60a5fa;
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 12px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+
 .sim-message-container {
     position: absolute;
     top: 12px;
@@ -476,6 +486,7 @@ let simulationSpeed = 1000; // 仿真更新间隔(毫秒)
 let activeHighlightLine = null;
 let activeHighlightedTarget = null;
 let activeHighlightedDrone = null;
+let activeHighlightTooltip = null;
 let enemyUnitValueMap = {};
 let maxEnemyUnitValue = 120;
 let targetAssignmentCounts = {};
@@ -1086,11 +1097,45 @@ function clearTargetHighlight() {
         map.removeLayer(activeHighlightLine);
         activeHighlightLine = null;
     }
+    if (activeHighlightTooltip) {
+        map.removeLayer(activeHighlightTooltip);
+        activeHighlightTooltip = null;
+    }
     if (activeHighlightedTarget && activeHighlightedTarget._icon) {
         activeHighlightedTarget._icon.classList.remove('target-highlight');
     }
     activeHighlightedTarget = null;
     activeHighlightedDrone = null;
+}
+
+function updateHighlightDistance() {
+    if (!activeHighlightLine || !activeHighlightedDrone || !activeHighlightedTarget) return;
+    const from = activeHighlightedDrone.getLatLng();
+    const to = activeHighlightedTarget.getLatLng();
+    const distanceKm = calculateDistance(from.lat, from.lng, to.lat, to.lng);
+    const text = `${distanceKm.toFixed(2)} km`;
+    if (!activeHighlightTooltip) {
+        activeHighlightTooltip = L.tooltip({
+            permanent: true,
+            direction: 'center',
+            className: 'distance-tooltip',
+            offset: [0, -4]
+        })
+        .setLatLng(L.latLng(
+            (from.lat + to.lat) / 2,
+            (from.lng + to.lng) / 2
+        ))
+        .setContent(text)
+        .addTo(map);
+    } else {
+        activeHighlightTooltip.setLatLng(L.latLng(
+            (from.lat + to.lat) / 2,
+            (from.lng + to.lng) / 2
+        ));
+        if (activeHighlightTooltip.setContent) {
+            activeHighlightTooltip.setContent(text);
+        }
+    }
 }
 
 function highlightTargetForDrone(droneMarker) {
@@ -1117,6 +1162,7 @@ function highlightTargetForDrone(droneMarker) {
     ).addTo(map);
     if (targetMarker.bringToFront) targetMarker.bringToFront();
     if (droneMarker.bringToFront) droneMarker.bringToFront();
+    updateHighlightDistance();
 }
 
 const TARGET_SELECTION_WEIGHTS = {
@@ -1393,6 +1439,7 @@ function updateUnitPositions() {
             activeHighlightedDrone.getLatLng(),
             activeHighlightedTarget.getLatLng()
         ]);
+        updateHighlightDistance();
     }
     checkSimulationEnd();
 }
