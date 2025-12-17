@@ -114,6 +114,7 @@
     <!-- 地图区域 -->
     <div class="map-container">
         <div id="simulationMap" class="simulation-map"></div>
+        <div class="sim-message-container" id="simMessageContainer"></div>
         
         <!-- 地图信息显示 -->
         <div class="map-info" id="mapInfo">
@@ -121,6 +122,52 @@
                 <span>经度：</span><span id="longitude">--</span>
                 <span>纬度：</span><span id="latitude">--</span>
                 <span>缩放级别：</span><span id="zoomLevel">--</span>
+            </div>
+        </div>
+        
+        <div class="battle-summary-panel" id="battleSummaryPanel" style="display: none;">
+            <div class="summary-header">
+                <div>
+                    <div class="summary-title">仿真结束</div>
+                    <div class="summary-subtitle" id="summaryReason">敌方全部被击毁</div>
+                </div>
+                <button class="btn btn-info btn-sm" id="closeSummary">隐藏</button>
+            </div>
+            <div class="summary-body">
+                <div class="summary-metrics">
+                    <div class="metric">
+                        <span>作战时长</span>
+                        <strong id="summaryDuration">--</strong>
+                    </div>
+                    <div class="metric">
+                        <span>弹药发射</span>
+                        <strong id="summaryShots">0</strong>
+                    </div>
+                    <div class="metric">
+                        <span>命中 / 击毁</span>
+                        <strong><span id="summaryHits">0</span> / <span id="summaryKills">0</span></strong>
+                    </div>
+                    <div class="metric">
+                        <span>敌方剩余</span>
+                        <strong id="summaryEnemyRemaining">0</strong>
+                    </div>
+                    <div class="metric">
+                        <span>我方剩余</span>
+                        <strong id="summaryOurRemaining">0</strong>
+                    </div>
+                </div>
+                <div class="summary-charts">
+                    <div class="chart-card">
+                        <div class="chart-title">弹药发射分布</div>
+                        <canvas id="ammoUsageChart"></canvas>
+                        <div class="chart-empty" id="ammoChartEmpty" style="display: none;">暂无数据</div>
+                    </div>
+                    <div class="chart-card">
+                        <div class="chart-title">目标击毁分布</div>
+                        <canvas id="killDistributionChart"></canvas>
+                        <div class="chart-empty" id="killChartEmpty" style="display: none;">暂无数据</div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -268,6 +315,137 @@
     transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
+.sim-message-container {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 1200;
+    pointer-events: none;
+}
+
+.sim-message {
+    min-width: 260px;
+    padding: 10px 14px;
+    border-radius: 6px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+    background: rgba(17, 24, 39, 0.9);
+    color: #fff;
+    font-size: 0.9rem;
+    border-left: 4px solid #60a5fa;
+    animation: fadeSlide 2s forwards;
+}
+
+.sim-message.success { border-color: #34d399; }
+.sim-message.warning { border-color: #fbbf24; }
+.sim-message.danger { border-color: #ef4444; }
+
+@keyframes fadeSlide {
+    0% { opacity: 0; transform: translateY(-8px); }
+    10% { opacity: 1; transform: translateY(0); }
+    80% { opacity: 1; transform: translateY(0); }
+    100% { opacity: 0; transform: translateY(-8px); }
+}
+
+.battle-summary-panel {
+    position: absolute;
+    bottom: 14px;
+    left: 14px;
+    right: 14px;
+    background: rgba(255, 255, 255, 0.97);
+    border-radius: 12px;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+    padding: 16px;
+    z-index: 1100;
+    backdrop-filter: blur(8px);
+}
+
+.summary-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.summary-title {
+    font-weight: 700;
+    font-size: 1.05rem;
+    color: #1f2937;
+}
+
+.summary-subtitle {
+    color: #6b7280;
+    font-size: 0.9rem;
+}
+
+.summary-body {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.summary-metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px;
+}
+
+.metric {
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 10px;
+}
+
+.metric span {
+    display: block;
+    color: #6b7280;
+    font-size: 0.85rem;
+    margin-bottom: 4px;
+}
+
+.metric strong {
+    color: #111827;
+    font-size: 1rem;
+}
+
+.summary-charts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 12px;
+}
+
+.chart-card {
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 10px;
+    min-height: 220px;
+    position: relative;
+}
+
+.chart-title {
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 8px;
+}
+
+.chart-empty {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #9ca3af;
+    font-size: 0.9rem;
+    background: rgba(255, 255, 255, 0.85);
+    border-radius: 8px;
+}
+
 @keyframes pulse {
     0% { opacity: 1; }
     50% { opacity: 0.7; }
@@ -279,6 +457,7 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
         crossorigin=""></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <script>
 // 全局变量
@@ -302,6 +481,22 @@ let maxEnemyUnitValue = 120;
 let targetAssignmentCounts = {};
 let weaponConfigMap = {};
 const FIRE_COOLDOWN_MS = 3000;
+const MESSAGE_DURATION_MS = 2000;
+
+let battleStats = {
+    shotsFired: 0,
+    hits: 0,
+    destroyed: 0,
+    ammoUsage: {},
+    killsByType: {},
+    startTime: null,
+    endTime: null,
+    initialEnemyCount: 0,
+    initialDroneCount: 0,
+    resultReason: ''
+};
+let ammoUsageChart = null;
+let killDistributionChart = null;
 
 // 单位运动数据
 let unitMovementData = {
@@ -396,6 +591,196 @@ function loadWeaponConfig() {
             saveLog('武器配置加载失败：' + error.message, 'ERROR');
             weaponConfigMap = {};
         });
+}
+
+function clearTransientMessages() {
+    const container = document.getElementById('simMessageContainer');
+    if (container) {
+        container.innerHTML = '';
+    }
+}
+
+function showAttackMessage(message, level = 'info') {
+    const container = document.getElementById('simMessageContainer');
+    if (!container) return;
+    const item = document.createElement('div');
+    const levelClass = level === 'success' ? 'success' : level === 'danger' ? 'danger' : level === 'warning' ? 'warning' : '';
+    item.className = `sim-message ${levelClass}`.trim();
+    item.textContent = message;
+    container.appendChild(item);
+    setTimeout(() => {
+        if (item && item.parentNode) {
+            item.parentNode.removeChild(item);
+        }
+    }, MESSAGE_DURATION_MS);
+}
+
+function destroyCharts() {
+    if (ammoUsageChart) {
+        ammoUsageChart.destroy();
+        ammoUsageChart = null;
+    }
+    if (killDistributionChart) {
+        killDistributionChart.destroy();
+        killDistributionChart = null;
+    }
+}
+
+function resetBattleStats() {
+    battleStats = {
+        shotsFired: 0,
+        hits: 0,
+        destroyed: 0,
+        ammoUsage: {},
+        killsByType: {},
+        startTime: null,
+        endTime: null,
+        initialEnemyCount: 0,
+        initialDroneCount: 0,
+        resultReason: ''
+    };
+    destroyCharts();
+    const panel = document.getElementById('battleSummaryPanel');
+    if (panel) {
+        panel.style.display = 'none';
+    }
+}
+
+function recordShot(weaponCode) {
+    battleStats.shotsFired += 1;
+    if (weaponCode) {
+        battleStats.ammoUsage[weaponCode] = (battleStats.ammoUsage[weaponCode] || 0) + 1;
+    }
+}
+
+function recordHit(hit, destroyed, targetMarker) {
+    if (hit) {
+        battleStats.hits += 1;
+    }
+    if (destroyed) {
+        battleStats.destroyed += 1;
+        const type = targetMarker && targetMarker.unitData ? targetMarker.unitData.type || '未知' : '未知';
+        battleStats.killsByType[type] = (battleStats.killsByType[type] || 0) + 1;
+    }
+}
+
+function formatDuration(seconds) {
+    if (!isFinite(seconds) || seconds < 0) return '--';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}分${secs}秒`;
+}
+
+function renderCharts() {
+    destroyCharts();
+    if (typeof Chart === 'undefined') {
+        console.warn('Chart.js 未加载，跳过图表渲染');
+        return;
+    }
+    const ammoCanvas = document.getElementById('ammoUsageChart');
+    const ammoEmpty = document.getElementById('ammoChartEmpty');
+    const ammoEntries = Object.entries(battleStats.ammoUsage || {});
+    if (ammoCanvas) {
+        const ctx = ammoCanvas.getContext('2d');
+        if (ammoEntries.length) {
+            if (ammoEmpty) ammoEmpty.style.display = 'none';
+            ammoUsageChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ammoEntries.map(([code]) => (weaponConfigMap[code] ? weaponConfigMap[code].name : code.toUpperCase())),
+                    datasets: [{
+                        label: '发射次数',
+                        data: ammoEntries.map(([, count]) => count),
+                        backgroundColor: '#60a5fa'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+                }
+            });
+        } else if (ammoEmpty) {
+            ammoEmpty.style.display = 'flex';
+        }
+    }
+
+    const killCanvas = document.getElementById('killDistributionChart');
+    const killEmpty = document.getElementById('killChartEmpty');
+    const killEntries = Object.entries(battleStats.killsByType || {});
+    if (killCanvas) {
+        const ctx = killCanvas.getContext('2d');
+        if (killEntries.length) {
+            if (killEmpty) killEmpty.style.display = 'none';
+            killDistributionChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: killEntries.map(([type]) => type),
+                    datasets: [{
+                        data: killEntries.map(([, count]) => count),
+                        backgroundColor: ['#34d399', '#fbbf24', '#60a5fa', '#f472b6', '#a78bfa']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { position: 'bottom' } }
+                }
+            });
+        } else if (killEmpty) {
+            killEmpty.style.display = 'flex';
+        }
+    }
+}
+
+function renderBattleSummary(reason = '仿真结束') {
+    const panel = document.getElementById('battleSummaryPanel');
+    if (!panel) return;
+    battleStats.resultReason = reason;
+    battleStats.endTime = battleStats.endTime || Date.now();
+    const durationSec = battleStats.startTime ? (battleStats.endTime - battleStats.startTime) / 1000 : 0;
+    const enemyRemaining = enemyMarkers.length;
+    const ourRemaining = unitMovementData.ourDrones.length;
+
+    document.getElementById('summaryReason').textContent = reason;
+    const durationEl = document.getElementById('summaryDuration');
+    if (durationEl) durationEl.textContent = formatDuration(durationSec);
+    document.getElementById('summaryShots').textContent = battleStats.shotsFired;
+    document.getElementById('summaryHits').textContent = battleStats.hits;
+    document.getElementById('summaryKills').textContent = battleStats.destroyed;
+    document.getElementById('summaryEnemyRemaining').textContent = enemyRemaining;
+    document.getElementById('summaryOurRemaining').textContent = ourRemaining;
+
+    panel.style.display = 'block';
+    renderCharts();
+}
+
+function hideBattleSummary() {
+    const panel = document.getElementById('battleSummaryPanel');
+    if (panel) panel.style.display = 'none';
+}
+
+function finishSimulation(reason) {
+    if (!isSimulationRunning) return;
+    isSimulationRunning = false;
+    isPaused = false;
+    stopSimulationLoop();
+    battleStats.endTime = Date.now();
+    renderBattleSummary(reason);
+    document.getElementById('simStatus').textContent = '已结束';
+    document.getElementById('simStatus').className = 'status-badge';
+    document.getElementById('startSim').innerHTML = '<i class="fas fa-play"></i> 开始仿真';
+    updateStartButtonState();
+    showAttackMessage(`仿真结束：${reason}`, 'success');
+    saveLog(`仿真结束：${reason}`);
+}
+
+function checkSimulationEnd() {
+    if (!isSimulationRunning) return;
+    if (enemyMarkers.length === 0) {
+        finishSimulation('敌方全部被击毁');
+    } else if (unitMovementData.ourDrones.length === 0) {
+        finishSimulation('我方全部被击毁');
+    }
 }
 
 // 初始化地图
@@ -845,6 +1230,7 @@ function handleTargetDestroyed(targetMarker) {
     });
     // 更新计数显示
     document.getElementById('enemyCount').textContent = enemyMarkers.length;
+    checkSimulationEnd();
 }
 
 function attemptEngagement(unit) {
@@ -858,6 +1244,7 @@ function attemptEngagement(unit) {
     const dist = calculateDistance(unit.currentPos.lat, unit.currentPos.lng, targetPos.lat, targetPos.lng);
     const weapon = chooseWeaponForTarget(unit, unit.targetMarker, dist);
     if (!weapon) return;
+    recordShot(weapon.code);
     unit.lastFireTime = now;
     applyWeaponConsumption(unit, weapon.code);
     const hitProbability = weapon.config.hit_probability || 0.5;
@@ -866,6 +1253,13 @@ function attemptEngagement(unit) {
     const killRoll = Math.random();
     const hit = roll <= hitProbability;
     const destroyed = hit && killRoll <= lethality;
+    recordHit(hit, destroyed, unit.targetMarker);
+    const droneLabel = unit.data.code || '未编号';
+    const targetLabel = formatTargetLabel(unit.targetMarker);
+    const weaponName = weapon.config.name || weapon.code.toUpperCase();
+    const resultLabel = destroyed ? '击毁目标' : (hit ? '命中未毁' : '未命中');
+    const messageLevel = destroyed ? 'success' : (hit ? 'warning' : 'danger');
+    showAttackMessage(`无人机${droneLabel}使用${weaponName}攻击${targetLabel}：${resultLabel}`, messageLevel);
     saveLog(`无人机(${unit.data.code || '未编号'}) 使用 ${weapon.config.name} 攻击 ${formatTargetLabel(unit.targetMarker)}，距离 ${dist.toFixed(2)}km，命中掷骰=${roll.toFixed(2)}，毁伤掷骰=${killRoll.toFixed(2)}，结果：${destroyed ? '击毁' : (hit ? '命中未毁' : '未命中')}`);
     if (destroyed) {
         handleTargetDestroyed(unit.targetMarker);
@@ -1000,6 +1394,7 @@ function updateUnitPositions() {
             activeHighlightedTarget.getLatLng()
         ]);
     }
+    checkSimulationEnd();
 }
 
 // 移动单位朝向目标
@@ -1232,6 +1627,11 @@ function startSimulation() {
         // 开始新的仿真
         isSimulationRunning = true;
         isPaused = false;
+        clearTransientMessages();
+        resetBattleStats();
+        battleStats.startTime = Date.now();
+        battleStats.initialEnemyCount = enemyMarkers.length;
+        battleStats.initialDroneCount = droneMarkers.length;
         
         // 初始化运动数据
         initializeMovementData();
@@ -1247,6 +1647,7 @@ function startSimulation() {
         const targetName = selectedTargetModel ? selectedTargetModel.name : '未选择';
         const fireName = selectedFireModel ? selectedFireModel.name : '未选择';
         saveLog(`开始仿真，当前场景: ${currentScenarioData.name}，目标分配模型: ${targetName}，火力分配模型: ${fireName}`);
+        checkSimulationEnd();
     } else if (isPaused) {
         // 继续仿真
         isPaused = false;
@@ -1288,6 +1689,9 @@ function stopSimulation() {
     
     // 停止仿真循环
     stopSimulationLoop();
+    clearTransientMessages();
+    hideBattleSummary();
+    resetBattleStats();
     
     // 重新加载场景以恢复初始位置
     if (currentScenarioData) {
@@ -1346,6 +1750,11 @@ document.addEventListener('DOMContentLoaded', function() {
         updateModelSelectionDisplay();
         updateStartButtonState();
     });
+    
+    const closeSummaryBtn = document.getElementById('closeSummary');
+    if (closeSummaryBtn) {
+        closeSummaryBtn.addEventListener('click', hideBattleSummary);
+    }
     
     saveLog('仿真评估页面初始化完成');
     updateStartButtonState();
