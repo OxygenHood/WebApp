@@ -104,7 +104,7 @@
         "max_speed":	1.0,
         "num_drones":	3,
         "progress_weight":	1.0,
-        "scenario":	"multi_uav_navigation",
+        "scenario":	"multi_uav",
         "start_noise":	0.0,
         "start_positions":	[
             [

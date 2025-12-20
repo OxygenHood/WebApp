@@ -8,8 +8,8 @@
       "description": "用于目标搜索与火控引导，仿真中仅作为占位"
     },
     {
-      "code": "hq9b",
-      "name": "HQ-9B 防空导弹",
+      "code": "ar1",
+      "name": "AR-1 导弹",
       "type": "sam",
       "max_range_km": 200,
       "min_range_km": 5,

@@ -79,7 +79,7 @@
         "max_cycles":	200,
         "num_agents":	3,
         "num_enemies":	30,
-        "scenario":	"45v30"
+        "scenario":	"multi-uav"
     },
     "main_args":	{
         "algo":	"mappo",

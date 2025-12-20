@@ -621,7 +621,7 @@ function addOurDrone() {
         lng: '',
         altitude: 100,
         radar: 0,
-        hq9b: 0,
+        ar1: 0,
         pl10: 0,
         cannon: 0
     };
@@ -673,9 +673,9 @@ function updateOurDronesList() {
                                    onchange="updateDroneField(${drone.id}, 'radar', this.value)">
                         </div>
                         <div class="detail-group">
-                            <label>HQ9B数量:</label>
-                            <input type="number" class="unit-input" value="${drone.hq9b}" min="0" max="10" 
-                                   onchange="updateDroneField(${drone.id}, 'hq9b', this.value)">
+                            <label>AR-1数量:</label>
+                            <input type="number" class="unit-input" value="${drone.ar1}" min="0" max="10" 
+                                   onchange="updateDroneField(${drone.id}, 'ar1', this.value)">
                         </div>
                         <div class="detail-group">
                             <label>PL-10数量:</label>
@@ -701,7 +701,7 @@ function updateOurDronesList() {
 function updateDroneField(droneId, field, value) {
     const drone = ourDrones.find(d => d.id === droneId);
     if (drone) {
-        if (field === 'altitude' || field === 'radar' || field === 'hq9b' || field === 'pl10' || field === 'cannon') {
+        if (field === 'altitude' || field === 'radar' || field === 'ar1' || field === 'pl10' || field === 'cannon') {
             drone[field] = parseInt(value) || 0;
         } else {
             drone[field] = value;
@@ -832,7 +832,7 @@ function prepareFormData() {
     // 调试：显示当前无人机数据（分条记录避免截断）
     saveLog(`无人机总数: ${ourDrones.length}`, 'DEBUG');
     ourDrones.forEach((drone, index) => {
-        saveLog(`无人机${index + 1}: 编号=${drone.code}, 位置=${drone.lat},${drone.lng}, 高度=${drone.altitude}, 雷达=${drone.radar}, HQ9B=${drone.hq9b}, PL-10=${drone.pl10}, 机炮=${drone.cannon}`, 'DEBUG');
+        saveLog(`无人机${index + 1}: 编号=${drone.code}, 位置=${drone.lat},${drone.lng}, 高度=${drone.altitude}, 雷达=${drone.radar}, AR-1=${drone.ar1}, PL-10=${drone.pl10}, 机炮=${drone.cannon}`, 'DEBUG');
     });
     
     // 验证是否至少有一架无人机

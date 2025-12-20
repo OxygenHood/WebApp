@@ -507,6 +507,8 @@ let weaponConfigMap = {};
 const FIRE_COOLDOWN_MS = 3000;
 const MESSAGE_DURATION_MS = 2000;
 const DESTRUCTION_ANIMATION_MS = 800;
+const AIR_TARGET_TYPES = ['reconnaissance_drone', 'attack_helicopter'];
+const GROUND_TARGET_TYPES = ['tank', 'armored_vehicle', 'military_base'];
 
 let battleStats = {
     shotsFired: 0,
@@ -1091,10 +1093,10 @@ function formatTargetLabel(targetMarker) {
 
 function formatPayloadSummary(droneData = {}) {
     const radar = droneData.radar || 0;
-    const hq9b = droneData.hq9b || 0;
+    const ar1 = droneData.ar1 || 0;
     const pl10 = droneData.pl10 || 0;
     const cannon = droneData.cannon || 0;
-    return `载荷：雷达:${radar} HQ9B:${hq9b} PL-10:${pl10} 机炮:${cannon}`;
+    return `载荷：雷达:${radar} AR-1:${ar1} PL-10:${pl10} 机炮:${cannon}`;
 }
 
 function updateDroneTooltip(unit) {
@@ -1229,14 +1231,27 @@ function getWeaponFromDrone(droneData, code) {
     };
 }
 
+function getTargetCategory(targetMarker) {
+    const type = targetMarker && targetMarker.unitData ? targetMarker.unitData.type || '' : '';
+    const isAir = AIR_TARGET_TYPES.includes(type);
+    const isGround = GROUND_TARGET_TYPES.includes(type);
+    return { type, isAir, isGround };
+}
+
 function chooseWeaponForTarget(droneUnit, targetMarker, distanceKm) {
     if (!droneUnit || !targetMarker) return null;
     const droneData = droneUnit.data || {};
-    const candidates = ['hq9b', 'pl10', 'cannon']
+    const { isAir, isGround } = getTargetCategory(targetMarker);
+    const candidates = ['ar1', 'pl10', 'cannon']
         .map(code => getWeaponFromDrone(droneData, code))
         .filter(Boolean);
+    const filtered = candidates.filter(w => {
+        if (w.code === 'ar1') return !isAir; // AR-1仅攻击地面目标
+        if (w.code === 'pl10') return isAir;  // PL-10仅攻击空中目标
+        return true; // 机炮都可以攻击
+    });
     let best = null;
-    candidates.forEach(w => {
+    filtered.forEach(w => {
         const cfg = w.config;
         const minRange = cfg.min_range_km || 0;
         const maxRange = cfg.max_range_km || 0;
@@ -1585,7 +1600,7 @@ function loadScenarioToMap(scenarioId) {
                                             <strong>高度：</strong>${droneData.altitude || 100}米
                                         </p>
                                         <p style="margin: 0 0 6px 0; color: #7f8c8d; font-size: 0.9rem;">
-                                            <strong>载荷：</strong>雷达${droneData.radar || 0}个, HQ9B${droneData.hq9b || 0}个, PL-10${droneData.pl10 || 0}个, 机炮${droneData.cannon || 0}门
+                                            <strong>载荷：</strong>雷达${droneData.radar || 0}个, AR-1${droneData.ar1 || 0}个, PL-10${droneData.pl10 || 0}个, 机炮${droneData.cannon || 0}门
                                         </p>
                                         <p style="margin: 0 0 6px 0; color: #7f8c8d; font-size: 0.9rem;">
                                             <strong>攻击目标：</strong>${targetLabel}

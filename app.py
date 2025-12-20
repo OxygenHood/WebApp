@@ -504,7 +504,7 @@ def create_scenario():
                     'lng': drone['lng'],
                     'altitude': drone['altitude'],
                     'radar': drone.get('radar', 0),
-                    'hq9b': drone.get('hq9b', 0),
+                    'ar1': drone.get('ar1', drone.get('hq9b', 0)),
                     'pl10': drone.get('pl10', 0),
                     'cannon': drone.get('cannon', 0)
                 }
@@ -515,14 +515,14 @@ def create_scenario():
             
             # 统计总载荷数量（用于兼容性）
             total_radar = sum(drone.get('radar', 0) for drone in our_drones)
-            total_hq9b = sum(drone.get('hq9b', 0) for drone in our_drones)
+            total_ar1 = sum(drone.get('ar1', drone.get('hq9b', 0)) for drone in our_drones)
             total_pl10 = sum(drone.get('pl10', 0) for drone in our_drones)
             total_cannon = sum(drone.get('cannon', 0) for drone in our_drones)
             
             # 保存详细配置，包含每架无人机的具体载荷
             our_drone_payloads = json.dumps({
                 'total_radar': total_radar,
-                'total_hq9b': total_hq9b,
+                'total_ar1': total_ar1,
                 'total_pl10': total_pl10,
                 'total_cannon': total_cannon,
                 'drones': drone_details  # 每架无人机的详细配置
@@ -639,7 +639,7 @@ def edit_scenario(scenario_id):
                     'lng': drone['lng'],
                     'altitude': drone['altitude'],
                     'radar': drone.get('radar', 0),
-                    'hq9b': drone.get('hq9b', 0),
+                    'ar1': drone.get('ar1', drone.get('hq9b', 0)),
                     'pl10': drone.get('pl10', 0),
                     'cannon': drone.get('cannon', 0)
                 }
@@ -650,14 +650,14 @@ def edit_scenario(scenario_id):
             
             # 统计总载荷数量（用于兼容性）
             total_radar = sum(drone.get('radar', 0) for drone in our_drones)
-            total_hq9b = sum(drone.get('hq9b', 0) for drone in our_drones)
+            total_ar1 = sum(drone.get('ar1', drone.get('hq9b', 0)) for drone in our_drones)
             total_pl10 = sum(drone.get('pl10', 0) for drone in our_drones)
             total_cannon = sum(drone.get('cannon', 0) for drone in our_drones)
             
             # 保存详细配置，包含每架无人机的具体载荷
             our_drone_payloads = json.dumps({
                 'total_radar': total_radar,
-                'total_hq9b': total_hq9b,
+                'total_ar1': total_ar1,
                 'total_pl10': total_pl10,
                 'total_cannon': total_cannon,
                 'drones': drone_details  # 每架无人机的详细配置
@@ -883,7 +883,8 @@ def get_scenario_detail(scenario_id):
         # 填充缺失的载荷字段以兼容旧数据
         for drone in our_drones:
             drone.setdefault('radar', 0)
-            drone.setdefault('hq9b', 0)
+            drone['ar1'] = drone.get('ar1', drone.get('hq9b', 0))
+            drone.pop('hq9b', None)
             drone.setdefault('pl10', 0)
             drone.setdefault('cannon', 0)
             drone.setdefault('altitude', drone.get('altitude', 100))
@@ -904,7 +905,7 @@ def get_scenario_detail(scenario_id):
                             'lng': coords[1],
                             'altitude': int(coords[2]) if len(coords) > 2 else 100,
                             'radar': 0,
-                            'hq9b': 0,
+                            'ar1': 0,
                             'pl10': 0,
                             'cannon': 0
                         })
@@ -1026,4 +1027,9 @@ def get_scenario_detail(scenario_id):
 
 
 if __name__ == '__main__':
-    app.run(debug=False, host='0.0.0.0', port=8888)
+    app.run(
+        host='0.0.0.0',
+        port=8888,
+        debug=False
+    )
+
