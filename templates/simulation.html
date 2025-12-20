@@ -193,6 +193,13 @@
     font-size: 14px;
 }
 
+.scenario-selection #loadScenario {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
 .btn-info {
     background-color: #17a2b8;
     color: white;
@@ -863,12 +870,20 @@ function updateMapInfo(lat, lng, zoom) {
     document.getElementById('zoomLevel').textContent = zoom;
 }
 
+function showLoadScenarioButton() {
+    const btn = document.getElementById('loadScenario');
+    if (btn) {
+        btn.style.display = 'inline-flex';
+    }
+}
+
 // 加载场景列表
 function loadScenarios() {
     fetch('/api/scenarios')
         .then(response => response.json())
         .then(data => {
             if (data.success) {
+                showLoadScenarioButton();
                 const select = document.getElementById('scenarioSelect');
                 select.innerHTML = '<option value="">请选择场景...</option>';
                 
@@ -885,6 +900,7 @@ function loadScenarios() {
             }
         })
         .catch(error => {
+            showLoadScenarioButton();
             saveLog('获取场景列表时发生错误: ' + error.message, 'ERROR');
         });
 }
@@ -1805,6 +1821,7 @@ document.addEventListener('DOMContentLoaded', function() {
     loadScenarios();
     // 加载模型列表
     loadModels();
+    showLoadScenarioButton();
     
     // 绑定按钮事件
     document.getElementById('startSim').addEventListener('click', startSimulation);
