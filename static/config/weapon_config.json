@@ -1,15 +1,8 @@
 {
   "weapons": [
     {
-      "code": "radar",
-      "name": "机载雷达",
-      "type": "sensor",
-      "max_range_km": 200,
-      "description": "用于目标搜索与火控引导，仿真中仅作为占位"
-    },
-    {
       "code": "ar1",
-      "name": "AR-1 导弹",
+      "name": "空地导弹",
       "type": "sam",
       "max_range_km": 200,
       "min_range_km": 5,
@@ -23,7 +16,7 @@
     },
     {
       "code": "pl10",
-      "name": "PL-10 近距空空导弹",
+      "name": "空空导弹",
       "type": "aam",
       "max_range_km": 20,
       "min_range_km": 0.5,

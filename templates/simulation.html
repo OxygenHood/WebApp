@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}仿真评估 - 无人集群指控系统{% endblock %}
+{% block title %}仿真评估 - 无人机集群动态任务分配仿真平台{% endblock %}
 
 {% block page_title %}仿真评估{% endblock %}
 
@@ -1122,11 +1122,10 @@ function formatTargetLabel(targetMarker) {
 }
 
 function formatPayloadSummary(droneData = {}) {
-    const radar = droneData.radar || 0;
     const ar1 = droneData.ar1 || 0;
     const pl10 = droneData.pl10 || 0;
     const cannon = droneData.cannon || 0;
-    return `载荷：雷达:${radar} AR-1:${ar1} PL-10:${pl10} 机炮:${cannon}`;
+    return `载荷：空地导弹:${ar1} 空空导弹:${pl10} 机炮:${cannon}`;
 }
 
 function updateDroneTooltip(unit) {
@@ -1276,8 +1275,8 @@ function chooseWeaponForTarget(droneUnit, targetMarker, distanceKm) {
         .map(code => getWeaponFromDrone(droneData, code))
         .filter(Boolean);
     const filtered = candidates.filter(w => {
-        if (w.code === 'ar1') return !isAir; // AR-1仅攻击地面目标
-        if (w.code === 'pl10') return isAir;  // PL-10仅攻击空中目标
+        if (w.code === 'ar1') return !isAir; // 空地导弹仅攻击地面目标
+        if (w.code === 'pl10') return isAir;  // 空空导弹仅攻击空中目标
         return true; // 机炮都可以攻击
     });
     let best = null;
@@ -1630,7 +1629,7 @@ function loadScenarioToMap(scenarioId) {
                                             <strong>高度：</strong>${droneData.altitude || 100}米
                                         </p>
                                         <p style="margin: 0 0 6px 0; color: #7f8c8d; font-size: 0.9rem;">
-                                            <strong>载荷：</strong>雷达${droneData.radar || 0}个, AR-1${droneData.ar1 || 0}个, PL-10${droneData.pl10 || 0}个, 机炮${droneData.cannon || 0}门
+                                            <strong>载荷：</strong>空地导弹${droneData.ar1 || 0}枚, 空空导弹${droneData.pl10 || 0}枚, 机炮${droneData.cannon || 0}门
                                         </p>
                                         <p style="margin: 0 0 6px 0; color: #7f8c8d; font-size: 0.9rem;">
                                             <strong>攻击目标：</strong>${targetLabel}

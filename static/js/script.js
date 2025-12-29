@@ -208,6 +208,6 @@ function showNotification(message, type = 'info') {
 window.addEventListener('load', function() {
     // 显示欢迎消息
     setTimeout(() => {
-        showNotification('欢迎使用无人集群指控系统！', 'success');
+        showNotification('欢迎使用无人机集群动态任务分配仿真平台！', 'success');
     }, 1000);
 });

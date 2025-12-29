@@ -225,6 +225,97 @@ def sync_models_from_fs():
     conn.close()
     return fs_models
 
+# 数据清洗与转换工具
+def safe_int(value, default=0):
+    """安全转换为整数，转换失败返回默认值"""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def normalize_drone_entry(drone, default_id=None):
+    """标准化单架无人机数据，移除已弃用字段"""
+    normalized = {
+        'id': drone.get('id', default_id),
+        'code': drone.get('code', ''),
+        'lat': drone.get('lat'),
+        'lng': drone.get('lng'),
+        'altitude': safe_int(drone.get('altitude', 100), 100),
+        'ar1': safe_int(drone.get('ar1', drone.get('hq9b', 0)), 0),
+        'pl10': safe_int(drone.get('pl10', 0), 0),
+        'cannon': safe_int(drone.get('cannon', 0), 0)
+    }
+    return normalized
+
+
+def serialize_drone_payloads(drones):
+    """生成载荷汇总JSON，不包含雷达"""
+    return json.dumps({
+        'total_ar1': sum(drone.get('ar1', 0) for drone in drones),
+        'total_pl10': sum(drone.get('pl10', 0) for drone in drones),
+        'total_cannon': sum(drone.get('cannon', 0) for drone in drones),
+        'drones': drones
+    })
+
+
+def sanitize_stored_drone_payload(payload_str):
+    """移除已有场景中的雷达载荷并规范字段"""
+    if not payload_str:
+        cleaned_payload = serialize_drone_payloads([])
+        return [], cleaned_payload, False
+    try:
+        payload_data = json.loads(payload_str)
+    except Exception:
+        cleaned_payload = serialize_drone_payloads([])
+        return [], cleaned_payload, False
+
+    if not isinstance(payload_data, dict):
+        cleaned_payload = serialize_drone_payloads([])
+        return [], cleaned_payload, False
+
+    drones = payload_data.get('drones') or []
+    cleaned_drones = []
+    changed = 'total_radar' in payload_data
+
+    for idx, drone in enumerate(drones):
+        if not isinstance(drone, dict):
+            continue
+        cleaned = normalize_drone_entry(drone, idx + 1)
+        if 'radar' in drone or 'hq9b' in drone:
+            changed = True
+        cleaned_drones.append(cleaned)
+
+    cleaned_payload = serialize_drone_payloads(cleaned_drones)
+    changed = changed or cleaned_payload != (payload_str or '')
+    return cleaned_drones, cleaned_payload, changed
+
+
+def sanitize_all_scenario_payloads():
+    """批量清理场景载荷中的雷达字段，保持兼容数据一致"""
+    conn = None
+    try:
+        conn = get_db_connection()
+        rows = conn.execute(
+            'SELECT id, our_drone_payloads FROM scenarios WHERE status = "active"'
+        ).fetchall()
+        updates = []
+        for row in rows:
+            _, cleaned_payload, changed = sanitize_stored_drone_payload(row['our_drone_payloads'] or '')
+            if changed:
+                updates.append((cleaned_payload, row['id']))
+        if updates:
+            conn.executemany(
+                'UPDATE scenarios SET our_drone_payloads = ? WHERE id = ?',
+                updates
+            )
+            conn.commit()
+    except Exception:
+        pass
+    finally:
+        if conn:
+            conn.close()
+
 # 添加自定义 Jinja2 过滤器
 @app.template_filter('from_json')
 def from_json_filter(value):
@@ -327,6 +418,7 @@ def index():
 def pipeline():
     """场景管理路由"""
     try:
+        sanitize_all_scenario_payloads()
         conn = get_db_connection()
         scenarios = conn.execute(
             '''SELECT id, name, description, created_by, 
@@ -492,41 +584,18 @@ def create_scenario():
                 return render_template('create_scenario.html')
             
             # 处理我方无人机数据
-            our_drone_count = len(our_drones)
-            our_drone_positions = []
+            normalized_drones = [
+                normalize_drone_entry(drone, idx + 1) for idx, drone in enumerate(our_drones)
+            ]
             
-            # 为每架无人机生成完整的配置信息
-            drone_details = []
-            for drone in our_drones:
-                drone_info = {
-                    'code': drone['code'],
-                    'lat': drone['lat'],
-                    'lng': drone['lng'],
-                    'altitude': drone['altitude'],
-                    'radar': drone.get('radar', 0),
-                    'ar1': drone.get('ar1', drone.get('hq9b', 0)),
-                    'pl10': drone.get('pl10', 0),
-                    'cannon': drone.get('cannon', 0)
-                }
-                drone_details.append(drone_info)
-                our_drone_positions.append(f"{drone['lat']},{drone['lng']},{drone['altitude']}")
-            
+            our_drone_count = len(normalized_drones)
+            our_drone_positions = [
+                f"{drone['lat']},{drone['lng']},{drone['altitude']}" for drone in normalized_drones
+            ]
             our_drone_positions_str = "\n".join(our_drone_positions)
             
-            # 统计总载荷数量（用于兼容性）
-            total_radar = sum(drone.get('radar', 0) for drone in our_drones)
-            total_ar1 = sum(drone.get('ar1', drone.get('hq9b', 0)) for drone in our_drones)
-            total_pl10 = sum(drone.get('pl10', 0) for drone in our_drones)
-            total_cannon = sum(drone.get('cannon', 0) for drone in our_drones)
-            
             # 保存详细配置，包含每架无人机的具体载荷
-            our_drone_payloads = json.dumps({
-                'total_radar': total_radar,
-                'total_ar1': total_ar1,
-                'total_pl10': total_pl10,
-                'total_cannon': total_cannon,
-                'drones': drone_details  # 每架无人机的详细配置
-            })
+            our_drone_payloads = serialize_drone_payloads(normalized_drones)
             
             # 处理敌方单位数据
             enemy_data = {
@@ -626,42 +695,17 @@ def edit_scenario(scenario_id):
                 return redirect(url_for('edit_scenario', scenario_id=scenario_id))
             
             # 处理我方无人机数据
-            our_drone_count = len(our_drones)
-            our_drone_positions = []
-            
-            # 为每架无人机生成完整的配置信息
-            drone_details = []
-            for drone in our_drones:
-                drone_info = {
-                    'id': drone.get('id', 1),
-                    'code': drone['code'],
-                    'lat': drone['lat'],
-                    'lng': drone['lng'],
-                    'altitude': drone['altitude'],
-                    'radar': drone.get('radar', 0),
-                    'ar1': drone.get('ar1', drone.get('hq9b', 0)),
-                    'pl10': drone.get('pl10', 0),
-                    'cannon': drone.get('cannon', 0)
-                }
-                drone_details.append(drone_info)
-                our_drone_positions.append(f"{drone['lat']},{drone['lng']},{drone['altitude']}")
-            
+            normalized_drones = [
+                normalize_drone_entry(drone, idx + 1) for idx, drone in enumerate(our_drones)
+            ]
+            our_drone_count = len(normalized_drones)
+            our_drone_positions = [
+                f"{drone['lat']},{drone['lng']},{drone['altitude']}" for drone in normalized_drones
+            ]
             our_drone_positions_str = "\n".join(our_drone_positions)
             
-            # 统计总载荷数量（用于兼容性）
-            total_radar = sum(drone.get('radar', 0) for drone in our_drones)
-            total_ar1 = sum(drone.get('ar1', drone.get('hq9b', 0)) for drone in our_drones)
-            total_pl10 = sum(drone.get('pl10', 0) for drone in our_drones)
-            total_cannon = sum(drone.get('cannon', 0) for drone in our_drones)
-            
             # 保存详细配置，包含每架无人机的具体载荷
-            our_drone_payloads = json.dumps({
-                'total_radar': total_radar,
-                'total_ar1': total_ar1,
-                'total_pl10': total_pl10,
-                'total_cannon': total_cannon,
-                'drones': drone_details  # 每架无人机的详细配置
-            })
+            our_drone_payloads = serialize_drone_payloads(normalized_drones)
             
             # 处理敌方单位数据
             enemy_data = {
@@ -870,27 +914,20 @@ def get_scenario_detail(scenario_id):
         if not scenario:
             return jsonify({'success': False, 'message': '场景不存在'}), 404
         
-        # 解析我方无人机数据
+        # 解析我方无人机数据，移除已弃用的雷达载荷
         our_drones = []
-        if scenario['our_drone_payloads']:
+        payload_json = scenario['our_drone_payloads'] or ''
+        cleaned_payload_json = payload_json
+        payload_changed = False
+
+        if payload_json:
             try:
-                payloads = json.loads(scenario['our_drone_payloads'])
-                if 'drones' in payloads:
-                    our_drones = payloads['drones']
-            except:
-                pass
-        
-        # 填充缺失的载荷字段以兼容旧数据
-        for drone in our_drones:
-            drone.setdefault('radar', 0)
-            drone['ar1'] = drone.get('ar1', drone.get('hq9b', 0))
-            drone.pop('hq9b', None)
-            drone.setdefault('pl10', 0)
-            drone.setdefault('cannon', 0)
-            drone.setdefault('altitude', drone.get('altitude', 100))
-            drone.setdefault('lat', drone.get('lat'))
-            drone.setdefault('lng', drone.get('lng'))
-        
+                our_drones, cleaned_payload_json, payload_changed = sanitize_stored_drone_payload(payload_json)
+            except Exception:
+                our_drones = []
+                cleaned_payload_json = serialize_drone_payloads([])
+                payload_changed = payload_json != cleaned_payload_json
+
         # 如果没有详细数据，使用位置数据
         if not our_drones and scenario['our_drone_positions']:
             positions = scenario['our_drone_positions'].split('\n')
@@ -904,11 +941,27 @@ def get_scenario_detail(scenario_id):
                             'lat': coords[0],
                             'lng': coords[1],
                             'altitude': int(coords[2]) if len(coords) > 2 else 100,
-                            'radar': 0,
                             'ar1': 0,
                             'pl10': 0,
                             'cannon': 0
                         })
+            cleaned_payload_json = serialize_drone_payloads(our_drones)
+            payload_changed = True
+
+        if payload_changed:
+            conn = None
+            try:
+                conn = get_db_connection()
+                conn.execute(
+                    'UPDATE scenarios SET our_drone_payloads = ? WHERE id = ?',
+                    (cleaned_payload_json, scenario_id)
+                )
+                conn.commit()
+            except Exception:
+                pass
+            finally:
+                if conn:
+                    conn.close()
         
         # 解析敌方单位数据（优先使用详细数据）
         enemy_units = []
