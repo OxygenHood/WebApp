@@ -453,6 +453,82 @@ def model():
         category_labels=MODEL_CATEGORIES
     )
 
+def _load_first_config(category):
+    """从指定模型类别目录读取首个 config.json 作为预设"""
+    base_dir = os.path.join(MODEL_ROOT, category)
+    if not os.path.isdir(base_dir):
+        return {}
+    for root, _, files in os.walk(base_dir):
+        if 'config.json' in files:
+            try:
+                with open(os.path.join(root, 'config.json'), 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception:
+                return {}
+    return {}
+
+
+def _build_train_presets():
+    """提取火力/目标分配的核心超参数作为预设"""
+    presets = {}
+    for category in ['target_allocation', 'fire_allocaltion']:
+        cfg = _load_first_config(category)
+        algo_args = cfg.get('algo_args', {}).get('algo', {}) if isinstance(cfg, dict) else {}
+        model_args = cfg.get('algo_args', {}).get('model', {}) if isinstance(cfg, dict) else {}
+        presets[category] = {
+            'algo': {
+                'clip_param': algo_args.get('clip_param'),
+                'entropy_coef': algo_args.get('entropy_coef'),
+                'gamma': algo_args.get('gamma'),
+                'gae_lambda': algo_args.get('gae_lambda'),
+                'ppo_epoch': algo_args.get('ppo_epoch'),
+                'actor_num_mini_batch': algo_args.get('actor_num_mini_batch'),
+                'value_loss_coef': algo_args.get('value_loss_coef'),
+                'max_grad_norm': algo_args.get('max_grad_norm'),
+                'use_gae': algo_args.get('use_gae'),
+                'use_clipped_value_loss': algo_args.get('use_clipped_value_loss'),
+                'use_policy_active_masks': algo_args.get('use_policy_active_masks'),
+            },
+            'model': {
+                'lr': model_args.get('lr'),
+                'critic_lr': model_args.get('critic_lr'),
+                'hidden_sizes': model_args.get('hidden_sizes'),
+                'activation_func': model_args.get('activation_func'),
+                'use_recurrent_policy': model_args.get('use_recurrent_policy'),
+                'use_feature_normalization': model_args.get('use_feature_normalization'),
+                'weight_decay': model_args.get('weight_decay'),
+                'initialization_method': model_args.get('initialization_method'),
+                'std_x_coef': model_args.get('std_x_coef'),
+                'std_y_coef': model_args.get('std_y_coef')
+            }
+        }
+    return presets
+
+@app.route('/model/train', methods=['GET', 'POST'])
+@login_required
+def train_model():
+    """模型训练演示页"""
+    conn = get_db_connection()
+    scenarios = conn.execute(
+        'SELECT id, name FROM scenarios WHERE status = "active" ORDER BY created_at DESC'
+    ).fetchall()
+    conn.close()
+
+    if request.method == 'POST':
+        scenario_id = (request.form.get('scenario_id') or '').strip()
+        train_type = (request.form.get('train_type') or '').strip()
+        if not scenario_id or not train_type:
+            flash('请选择场景和任务类型', 'error')
+            return redirect(url_for('train_model'))
+
+        scenario_name = next((s['name'] for s in scenarios if str(s['id']) == scenario_id), '未选择')
+        task_label = '目标分配' if train_type == 'target_allocation' else '火力分配'
+        flash(f'训练任务已提交：{task_label} · 场景 {scenario_name}', 'success')
+        return redirect(url_for('train_model'))
+
+    train_presets = _build_train_presets()
+    return render_template('train_model.html', scenarios=scenarios, train_presets=train_presets)
+
 @app.route('/model/<int:model_id>')
 @login_required
 def model_detail(model_id):
