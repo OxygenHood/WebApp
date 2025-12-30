@@ -530,6 +530,13 @@ const MESSAGE_DURATION_MS = 2000;
 const DESTRUCTION_ANIMATION_MS = 800;
 const AIR_TARGET_TYPES = ['reconnaissance_drone', 'attack_helicopter'];
 const GROUND_TARGET_TYPES = ['tank', 'armored_vehicle', 'military_base'];
+const UNIT_TYPE_LABELS = {
+    reconnaissance_drone: '侦察无人机',
+    attack_helicopter: '武装直升机',
+    tank: '坦克',
+    armored_vehicle: '装甲车',
+    military_base: '军事基地'
+};
 
 let battleStats = {
     shotsFired: 0,
@@ -763,7 +770,7 @@ function renderCharts() {
             killDistributionChart = new Chart(ctx, {
                 type: 'doughnut',
                 data: {
-                    labels: killEntries.map(([type]) => type),
+                    labels: killEntries.map(([type]) => UNIT_TYPE_LABELS[type] || type),
                     datasets: [{
                         data: killEntries.map(([, count]) => count),
                         backgroundColor: ['#34d399', '#fbbf24', '#60a5fa', '#f472b6', '#a78bfa']
